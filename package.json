@@ -18,11 +18,17 @@
     "format": "biome format --write .",
     "lint": "biome lint .",
     "check": "biome check --write .",
-    "check:ci": "biome check ."
+    "check:ci": "biome check .",
+    "migrate": "node --import 'data:text/javascript,import { config } from \"dotenv\"; config();' node_modules/node-pg-migrate/bin/node-pg-migrate.js -j sql -d DATABASE_URL -m migrations",
+    "migrate:up": "npm run migrate -- up",
+    "migrate:down": "npm run migrate -- down",
+    "migrate:create": "npm run migrate -- create"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",
     "@types/node": "^25.8.0",
+    "dotenv": "^17.4.2",
+    "node-pg-migrate": "^8.0.4",
     "typescript": "^6.0.3"
   }
 }
