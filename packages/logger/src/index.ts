@@ -15,5 +15,4 @@ export function createLogger(service: string): Logger {
             options: { colorize: true, translateTime: 'SYS:HH:MM:ss.l' },
           },
   });
-
 }

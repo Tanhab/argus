@@ -14,5 +14,12 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.8.0",
+    "@types/pg": "^8.20.0"
   }
 }
