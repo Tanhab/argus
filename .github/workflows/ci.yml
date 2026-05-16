@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    name: Typecheck, Lint, Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Biome check (lint + format)
+        run: npm run check:ci
+
+      - name: Build all workspaces
+        run: npm run build
+
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: false
+          tags: argus-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Checker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/checker/Dockerfile
+          push: false
+          tags: argus-checker:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+  smoke:
+    name: Smoke Test
+    runs-on: ubuntu-latest
+    needs: docker
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: argus
+          POSTGRES_PASSWORD: argus_dev
+          POSTGRES_DB: argus
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U argus -d argus"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          load: true
+          tags: argus-api:smoke
+          cache-from: type=gha
+
+      - name: Run API container
+        run: |
+          docker run -d \
+            --name argus-api-smoke \
+            --network host \
+            -e DATABASE_URL=postgres://argus:argus_dev@localhost:5432/argus \
+            -e NODE_ENV=production \
+            argus-api:smoke
+
+      - name: Wait for API
+        run: |
+          for i in {1..30}; do
+            if curl -fs http://localhost:3000/health; then exit 0; fi
+            sleep 1
+          done
+          docker logs argus-api-smoke
+          exit 1
+
+      - name: Hit endpoints
+        run: |
+          curl -fs http://localhost:3000/health
+          curl -fs http://localhost:3000/ready
+
+      - name: Show logs
+        if: always()
+        run: docker logs argus-api-smoke
