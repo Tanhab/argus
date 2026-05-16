@@ -22,12 +22,16 @@
     "migrate": "node --import 'data:text/javascript,import { config } from \"dotenv\"; config();' node_modules/node-pg-migrate/bin/node-pg-migrate.js -j sql -d DATABASE_URL -m migrations",
     "migrate:up": "npm run migrate -- up",
     "migrate:down": "npm run migrate -- down",
-    "migrate:create": "npm run migrate -- create"
+    "migrate:create": "npm run migrate -- create",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.15",
+    "@commitlint/cli": "^21.0.1",
+    "@commitlint/config-conventional": "^21.0.1",
     "@types/node": "^25.8.0",
     "dotenv": "^17.4.2",
+    "husky": "^9.1.7",
     "node-pg-migrate": "^8.0.4",
     "typescript": "^6.0.3"
   }
