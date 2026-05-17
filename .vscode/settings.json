@@ -12,5 +12,8 @@
   },
   "[jsonc]": {
     "editor.defaultFormatter": "biomejs.biome"
-  }
+  },
+  "biome.lsp.bin": "${workspaceFolder}/node_modules/@biomejs/biome/bin/biome"
+
+
 }

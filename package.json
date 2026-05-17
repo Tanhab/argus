@@ -19,7 +19,7 @@
     "lint": "biome lint .",
     "check": "biome check --write .",
     "check:ci": "biome check .",
-    "migrate": "node --import 'data:text/javascript,import { config } from \"dotenv\"; config();' node_modules/node-pg-migrate/bin/node-pg-migrate.js -j sql -d DATABASE_URL -m migrations",
+    "migrate": "node --import dotenv/config node_modules/node-pg-migrate/bin/node-pg-migrate.js -j sql -d DATABASE_URL -m migrations",
     "migrate:up": "npm run migrate -- up",
     "migrate:down": "npm run migrate -- down",
     "migrate:create": "npm run migrate -- create",
