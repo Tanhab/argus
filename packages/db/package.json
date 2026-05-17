@@ -13,13 +13,17 @@
   },
   "scripts": {
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "pg": "^8.20.0"
   },
   "devDependencies": {
+    "@testcontainers/postgresql": "^11.14.0",
     "@types/node": "^25.8.0",
-    "@types/pg": "^8.20.0"
+    "@types/pg": "^8.20.0",
+    "vitest": "^4.1.6"
   }
 }
