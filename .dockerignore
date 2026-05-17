@@ -18,3 +18,5 @@ Dockerfile
 .dockerignore
 README.md
 *.md
+**/*.test.ts
+**/vitest.config.ts
