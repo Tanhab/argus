@@ -2,8 +2,9 @@ import { ping } from '@argus/db';
 import { createLogger } from '@argus/logger';
 import Fastify, { type FastifyError } from 'fastify';
 import { ArgusError } from './errors.js';
+import { monitorsRoutes } from './routes/monitors.js';
 
-export function buildApp() {
+export async function buildApp() {
   const app = Fastify({
     loggerInstance: createLogger('api'),
     genReqId: () => crypto.randomUUID(),
@@ -42,6 +43,8 @@ export function buildApp() {
     }
     return { status: 'ready', db: true };
   });
+
+  await app.register(monitorsRoutes, { prefix: '/v1' });
 
   return app;
 }
