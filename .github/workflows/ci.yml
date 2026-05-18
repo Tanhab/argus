@@ -93,6 +93,8 @@ jobs:
             --network host \
             -e DATABASE_URL=postgres://argus:argus_dev@localhost:5432/argus \
             -e NODE_ENV=production \
+            -e MONITOR_USER_ID=ci-user \
+            -e NTFY_TOPIC_URL=https://ntfy.sh/ci-placeholder \
             argus-api:smoke
 
       - name: Wait for API

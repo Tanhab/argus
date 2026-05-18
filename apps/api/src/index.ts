@@ -1,7 +1,7 @@
 import { buildApp } from './app.js';
 import { config } from './config.js';
 
-const app = buildApp();
+const app = await buildApp();
 
 const start = async () => {
   try {
