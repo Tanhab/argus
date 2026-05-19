@@ -75,6 +75,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Build API image
@@ -85,6 +93,12 @@ jobs:
           load: true
           tags: argus-api:smoke
           cache-from: type=gha
+
+      - name: Run migrations
+        run: |
+          npm run migrate:up
+        env:
+          DATABASE_URL: postgres://argus:argus_dev@localhost:5432/argus
 
       - name: Run API container
         run: |
