@@ -1,6 +1,7 @@
 import { ping } from '@argus/db';
 import { createLogger } from '@argus/logger';
 import Fastify, { type FastifyError } from 'fastify';
+import { createCheckerScheduler } from './checker/scheduler.js';
 import { ArgusError } from './errors.js';
 import { monitorsRoutes } from './routes/monitors.js';
 
@@ -27,6 +28,13 @@ export async function buildApp() {
       detail: status >= 500 && !isKnown ? 'Internal Server Error' : err.message,
       requestId: req.id,
     });
+  });
+
+  const scheduler = createCheckerScheduler();
+  await scheduler.start();
+  app.decorate('checker', scheduler);
+  app.addHook('onClose', async () => {
+    await scheduler.stop();
   });
 
   app.get('/health', async () => ({

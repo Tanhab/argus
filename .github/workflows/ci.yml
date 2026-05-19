@@ -95,6 +95,7 @@ jobs:
             -e NODE_ENV=production \
             -e MONITOR_USER_ID=ci-user \
             -e NTFY_TOPIC_URL=https://ntfy.sh/ci-placeholder \
+            -e CHECKER_ID=local \
             argus-api:smoke
 
       - name: Wait for API
