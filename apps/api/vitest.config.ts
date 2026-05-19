@@ -8,6 +8,7 @@ export default defineConfig({
       DATABASE_URL: 'postgres://placeholder',
       MONITOR_USER_ID: 'test-user',
       NTFY_TOPIC_URL: 'https://ntfy.sh/test',
+      CHECKER_ID: 'local',
     },
     hookTimeout: 60_000,
     testTimeout: 30_000,
