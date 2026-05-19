@@ -41,3 +41,14 @@ export interface NewMonitor {
   url: string;
   intervalSeconds: number;
 }
+
+export interface ApiKey {
+  id: string;
+  keyHash: string;
+  keyPrefix: string;
+  owner: string;
+  scopes: string[];
+  isActive: boolean;
+  createdAt: Date;
+  revokedAt: Date | null;
+}

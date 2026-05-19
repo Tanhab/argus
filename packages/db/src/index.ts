@@ -1,5 +1,7 @@
 export { env } from './env.js';
 export { ping, pool, query, resetPool } from './pool.js';
+export * as apiKeys from './queries/api-keys.js';
+export * as heartbeats from './queries/heartbeats.js';
 export * as monitors from './queries/monitors.js';
 export * as results from './queries/results.js';
 export { withTransaction } from './transaction.js';
