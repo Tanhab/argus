@@ -1,18 +1,39 @@
 import { createLogger } from '@argus/logger';
+import { postHeartbeat } from './api-client.js';
+import { config } from './config.js';
+import { createCheckerScheduler } from './scheduler.js';
 
 const log = createLogger('checker');
 
-log.info({ checkerId: process.env.CHECKER_ID ?? 'local' }, 'checker stub started');
+async function main() {
+  log.info({ checkerId: config.checkerId, apiUrl: config.apiUrl }, 'checker starting');
 
-// Keep the process alive. Phase 2 replaces this with the real checker loop.
-setInterval(() => {
-  log.debug('checker stub heartbeat');
-}, 30_000);
+  const scheduler = createCheckerScheduler();
+  await scheduler.resync();
 
-// Graceful shutdown so docker stop doesn't take 10s
-const shutdown = (signal: string) => {
-  log.info({ signal }, 'checker shutting down');
-  process.exit(0);
-};
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+  setInterval(
+    () => scheduler.resync().catch((err) => log.error({ err }, 'resync failed')),
+    config.syncIntervalMs,
+  );
+
+  setInterval(
+    () => postHeartbeat().catch((err) => log.error({ err }, 'heartbeat failed')),
+    config.heartbeatIntervalMs,
+  );
+
+  await postHeartbeat();
+
+  process.on('SIGTERM', () => {
+    scheduler.stop();
+    process.exit(0);
+  });
+  process.on('SIGINT', () => {
+    scheduler.stop();
+    process.exit(0);
+  });
+}
+
+main().catch((err) => {
+  log.error({ err }, 'checker failed to start');
+  process.exit(1);
+});
