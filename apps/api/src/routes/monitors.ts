@@ -27,7 +27,6 @@ export async function monitorsRoutes(app: FastifyInstance) {
         intervalSeconds: body.intervalSeconds ?? 60,
       });
       reply.status(201);
-      app.checker.scheduleMonitor(monitor);
       return monitor;
     },
   );
@@ -70,7 +69,6 @@ export async function monitorsRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const isDeleted = await monitors.deactivateMonitor(id, config.monitorUserId);
     if (!isDeleted) throw new NotFoundError(`monitor ${id} not found`);
-    app.checker.unscheduleMonitor(id);
     reply.status(204).send();
   });
 }

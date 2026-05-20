@@ -1,5 +1,5 @@
 import { createLogger } from '@argus/logger';
-import { config } from '../config.js';
+import { config } from './config.js';
 
 const log = createLogger('checker');
 
