@@ -21,3 +21,9 @@ export class ValidationError extends ArgusError {
     super(message, 'validation_failed', 400, cause);
   }
 }
+
+export class AuthError extends ArgusError {
+  constructor(message: string, cause?: unknown) {
+    super(message, 'auth_failed', 401, cause);
+  }
+}

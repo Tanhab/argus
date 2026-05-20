@@ -58,6 +58,14 @@ export async function getActiveMonitors(): Promise<Monitor[]> {
   return rows.map(toMonitor);
 }
 
+export async function getActiveMonitor(monitorId: string): Promise<Monitor | null> {
+  const rows = await query<MonitorRow>(
+    'SELECT * FROM monitors WHERE is_active = true AND id = $1',
+    [monitorId],
+  );
+  return rows[0] ? toMonitor(rows[0]) : null;
+}
+
 export async function deactivateMonitor(id: string, userId: string): Promise<boolean> {
   const rows = await query<MonitorRow>(
     `UPDATE  monitors SET is_active = false, deactivated_at = NOW()

@@ -3,6 +3,7 @@ import { createLogger } from '@argus/logger';
 import Fastify, { type FastifyError } from 'fastify';
 import { createCheckerScheduler } from './checker/scheduler.js';
 import { ArgusError } from './errors.js';
+import { internalRoutes } from './routes/internal/index.js';
 import { monitorsRoutes } from './routes/monitors.js';
 
 export async function buildApp() {
@@ -53,6 +54,6 @@ export async function buildApp() {
   });
 
   await app.register(monitorsRoutes, { prefix: '/v1' });
-
+  await app.register(internalRoutes, { prefix: '/internal' });
   return app;
 }
