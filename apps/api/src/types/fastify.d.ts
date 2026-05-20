@@ -1,9 +1,6 @@
-import type { CheckerScheduler } from '../checker/scheduler.js';
+import 'fastify';
 
 declare module 'fastify' {
-  interface FastifyInstance {
-    checker: CheckerScheduler;
-  }
   interface FastifyRequest {
     checker?: { id: string; keyId: string };
   }

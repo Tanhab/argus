@@ -1,6 +1,6 @@
 import { type ErrorType, monitors, results } from '@argus/db';
 import type { FastifyInstance } from 'fastify';
-import { sendNtfy } from '../../checker/alert.js';
+import { sendNtfy } from '../../alert.js';
 import { NotFoundError } from '../../errors.js';
 import { requireCheckerAuth } from './auth.js';
 
