@@ -78,25 +78,14 @@ jobs:
           script: |
             set -euo pipefail
             cd /opt/argus
-            export IMAGE=${{ needs.build.outputs.image }}
-            export API_IMAGE="$IMAGE"
-            export POSTGRES_PASSWORD=$(grep ^POSTGRES_PASSWORD .env | cut -d= -f2-)
+            npm ci --ignore-scripts 2>/dev/null || true
+            export DATABASE_URL=$(grep ^DATABASE_URL .env | cut -d= -f2)
+            node node_modules/node-pg-migrate/bin/node-pg-migrate.js \
+              -j sql -d DATABASE_URL -m migrations up
+            IMAGE=${{ needs.build.outputs.image }}
             docker pull "$IMAGE"
-
-            # Postgres must be healthy before migrations connect.
-            docker compose -f infra/docker-compose.prod.yml up -d --wait postgres
-
-            # Migrations run in a throwaway container ON the docker network so
-            # the `postgres` hostname resolves. Running on the host fails with
-            # EAI_AGAIN because that hostname is internal to infra_default.
-            docker run --rm \
-              --network infra_default \
-              -v /opt/argus/migrations:/migrations \
-              -e DATABASE_URL="$(grep ^DATABASE_URL .env | cut -d= -f2-)" \
-              node:24-alpine \
-              sh -c "npm i -g node-pg-migrate@8 && \
-                     node-pg-migrate -j sql -d DATABASE_URL -m /migrations up"
-
+            export POSTGRES_PASSWORD=$(grep ^POSTGRES_PASSWORD .env | cut -d= -f2)
+            export API_IMAGE="$IMAGE"
             docker compose -f infra/docker-compose.prod.yml up -d
             sleep 5
             docker compose -f infra/docker-compose.prod.yml logs --tail=20 api
