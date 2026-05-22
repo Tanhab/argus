@@ -22,6 +22,8 @@ jobs:
   build:
     name: Docker Build (API)
     runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
     steps:
       - uses: actions/checkout@v4
 
@@ -33,6 +35,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set image name
+        id: meta
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/${OWNER}/argus-api:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push API image
         uses: docker/build-push-action@v6
         with:
@@ -40,7 +48,7 @@ jobs:
           file: apps/api/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/argus-api:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.image }}
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
 
@@ -73,7 +81,7 @@ jobs:
             DATABASE_URL=$(grep ^DATABASE_URL .env | cut -d= -f2) \
               node node_modules/node-pg-migrate/bin/node-pg-migrate.js \
               -j sql -d DATABASE_URL -m migrations up
-            IMAGE=ghcr.io/${{ github.repository_owner }}/argus-api:${{ github.sha }}
+            IMAGE=${{ needs.build.outputs.image }}
             docker pull "$IMAGE"
             POSTGRES_PASSWORD=$(grep ^POSTGRES_PASSWORD .env | cut -d= -f2) \
               API_IMAGE="$IMAGE" \

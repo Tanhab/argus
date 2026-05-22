@@ -20,6 +20,8 @@ jobs:
   build:
     name: Docker Build (Checker)
     runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
     steps:
       - uses: actions/checkout@v4
 
@@ -31,6 +33,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set image name
+        id: meta
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/${OWNER}/argus-checker:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push checker image
         uses: docker/build-push-action@v6
         with:
@@ -38,7 +46,7 @@ jobs:
           file: apps/checker/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/argus-checker:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.image }}
           cache-from: type=gha,scope=checker
           cache-to: type=gha,mode=max,scope=checker
 
@@ -64,7 +72,7 @@ jobs:
           username: argus
           key: ${{ secrets.DO_SSH_KEY }}
           script: |
-            IMAGE=ghcr.io/${{ github.repository_owner }}/argus-checker:${{ github.sha }}
+            IMAGE=${{ needs.build.outputs.image }}
             docker pull "$IMAGE"
             docker stop argus-checker 2>/dev/null || true
             docker rm argus-checker 2>/dev/null || true
