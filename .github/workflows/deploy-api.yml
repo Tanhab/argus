@@ -76,6 +76,7 @@ jobs:
           username: argus
           key: ${{ secrets.DO_SSH_KEY }}
           script: |
+            set -euo pipefail
             cd /opt/argus
             npm ci --ignore-scripts 2>/dev/null || true
             export DATABASE_URL=$(grep ^DATABASE_URL .env | cut -d= -f2)
