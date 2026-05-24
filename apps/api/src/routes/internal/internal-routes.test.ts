@@ -137,6 +137,33 @@ describe('internal routes — results', () => {
     expect(rows[0]).toMatchObject({ checker_id: 'checker-eu', is_up: true });
   });
 
+  test('accepts a body with errorType: null (what the checker sends on up results)', async () => {
+    const m = await monitors.createMonitor({
+      userId: 'test-user',
+      url: 'https://example.com',
+      intervalSeconds: 60,
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/internal/results',
+      headers: { 'x-api-key': RAW_KEY },
+      payload: {
+        monitorId: m.id,
+        isUp: true,
+        statusCode: 200,
+        durationMs: 120,
+        errorType: null,
+      },
+    });
+    expect(res.statusCode).toBe(202);
+    const rows = await query<{ error_type: string | null }>(
+      'SELECT error_type FROM check_results WHERE monitor_id = $1',
+      [m.id],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.error_type).toBeNull();
+  });
+
   test('returns 404 when monitor does not exist', async () => {
     const res = await app.inject({
       method: 'POST',

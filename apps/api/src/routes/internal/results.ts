@@ -15,8 +15,7 @@ const bodySchema = {
     durationMs: { type: 'integer', nullable: true, minimum: 0 },
     isUp: { type: 'boolean' },
     errorType: {
-      type: 'string',
-      nullable: true,
+      type: ['string', 'null'],
       enum: [
         'timeout',
         'dns_failure',
@@ -24,6 +23,7 @@ const bodySchema = {
         'tls_error',
         'http_error',
         'network_error',
+        null,
       ],
     },
   },
