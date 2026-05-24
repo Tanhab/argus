@@ -3,6 +3,21 @@ import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 import { NotFoundError } from '../errors.js';
 
+const monitorResponseSchema = {
+  type: 'object',
+  properties: {
+    id: { type: 'string' },
+    userId: { type: 'string' },
+    url: { type: 'string' },
+    intervalSeconds: { type: 'integer' },
+    isActive: { type: 'boolean' },
+    createdAt: { type: 'string', format: 'date-time' },
+    deactivatedAt: { type: 'string', format: 'date-time', nullable: true },
+    lastConsensus: { type: 'string', nullable: true },
+    lastConsensusAt: { type: 'string', format: 'date-time', nullable: true },
+  },
+} as const;
+
 export async function monitorsRoutes(app: FastifyInstance) {
   app.post(
     '/monitors',
@@ -17,6 +32,7 @@ export async function monitorsRoutes(app: FastifyInstance) {
             intervalSeconds: { type: 'integer', minimum: 30, maximum: 3600, default: 60 },
           },
         },
+        response: { 201: monitorResponseSchema },
       },
     },
     async (req, reply) => {
@@ -31,16 +47,24 @@ export async function monitorsRoutes(app: FastifyInstance) {
     },
   );
 
-  app.get('/monitors', async () => {
-    const allMonitors = await monitors.listMonitors(config.monitorUserId);
-    return allMonitors;
-  });
-  app.get('/monitors/:id', async (req) => {
-    const { id } = req.params as { id: string };
-    const monitor = await monitors.getMonitor(id, config.monitorUserId);
-    if (!monitor) throw new NotFoundError(`monitor ${id} not found`);
-    return monitor;
-  });
+  app.get(
+    '/monitors',
+    { schema: { response: { 200: { type: 'array', items: monitorResponseSchema } } } },
+    async () => {
+      const allMonitors = await monitors.listMonitors(config.monitorUserId);
+      return allMonitors;
+    },
+  );
+  app.get(
+    '/monitors/:id',
+    { schema: { response: { 200: monitorResponseSchema } } },
+    async (req) => {
+      const { id } = req.params as { id: string };
+      const monitor = await monitors.getMonitor(id, config.monitorUserId);
+      if (!monitor) throw new NotFoundError(`monitor ${id} not found`);
+      return monitor;
+    },
+  );
 
   app.get(
     '/monitors/:id/results',

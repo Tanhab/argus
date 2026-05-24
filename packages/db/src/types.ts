@@ -10,6 +10,8 @@ export interface Monitor {
   deactivatedAt: Date | null;
   lastConsensus: ConsensusVerdict | null;
   lastConsensusAt: Date | null;
+  lastAlertableConsensus: ConsensusVerdict | null;
+  lastAlertableConsensusAt: Date | null;
 }
 
 export type ErrorType =

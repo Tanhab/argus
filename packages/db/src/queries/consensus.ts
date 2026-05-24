@@ -64,3 +64,17 @@ export async function updateLastConsensus(
     [monitorId, verdict],
   );
 }
+
+export async function updateLastAlertableConsensus(
+  tx: PoolClient,
+  monitorId: string,
+  verdict: string,
+): Promise<void> {
+  await tx.query(
+    `UPDATE monitors
+        SET last_alertable_consensus = $2,
+            last_alertable_consensus_at = NOW()
+      WHERE id = $1`,
+    [monitorId, verdict],
+  );
+}

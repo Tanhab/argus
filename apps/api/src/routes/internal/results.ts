@@ -1,6 +1,6 @@
 import { type ErrorType, monitors, results } from '@argus/db';
 import type { FastifyInstance } from 'fastify';
-import { sendNtfy } from '../../alert.js';
+import { maybeAlertOnConsensus } from '../../consensus/alert.js';
 import { evaluateConsensus } from '../../consensus/evaluate.js';
 import { NotFoundError } from '../../errors.js';
 import { requireCheckerAuth } from './auth.js';
@@ -57,44 +57,18 @@ export async function resultsRoute(app: FastifyInstance) {
         isUp: b.isUp,
         errorType: (b.errorType ?? null) as ErrorType | null,
       });
-      await evaluateConsensus(b.monitorId);
 
-      await maybeAlert(
-        b.monitorId,
-        monitor.url,
-        checker.id,
-        b.isUp,
-        b.durationMs ?? null,
-        b.errorType ?? null,
-      );
+      const consensusResult = await evaluateConsensus(b.monitorId);
+      if (consensusResult) {
+        await maybeAlertOnConsensus(
+          monitor,
+          consensusResult.outcome,
+          consensusResult.previousVerdict,
+          req.log,
+        );
+      }
 
       reply.status(202);
     },
   );
-}
-
-async function maybeAlert(
-  monitorId: string,
-  url: string,
-  checkerId: string,
-  isUp: boolean,
-  durationMs: number | null,
-  errorType: string | null,
-): Promise<void> {
-  const last = await results.getLastTwoResultsForChecker(monitorId, checkerId);
-  if (last.length < 2) return;
-  if (last[1]?.isUp === isUp) return;
-
-  if (!isUp) {
-    await sendNtfy(
-      `DOWN [${checkerId}]: ${url}`,
-      `${errorType ?? 'unknown error'} after ${durationMs}ms`,
-      'high',
-      ['rotating_light'],
-    );
-  } else {
-    await sendNtfy(`RECOVERED [${checkerId}]: ${url}`, `back up in ${durationMs}ms`, 'default', [
-      'white_check_mark',
-    ]);
-  }
 }
