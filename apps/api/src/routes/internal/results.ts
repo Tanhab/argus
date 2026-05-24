@@ -1,6 +1,7 @@
 import { type ErrorType, monitors, results } from '@argus/db';
 import type { FastifyInstance } from 'fastify';
 import { sendNtfy } from '../../alert.js';
+import { evaluateConsensus } from '../../consensus/evaluate.js';
 import { NotFoundError } from '../../errors.js';
 import { requireCheckerAuth } from './auth.js';
 
@@ -56,6 +57,7 @@ export async function resultsRoute(app: FastifyInstance) {
         isUp: b.isUp,
         errorType: (b.errorType ?? null) as ErrorType | null,
       });
+      await evaluateConsensus(b.monitorId);
 
       await maybeAlert(
         b.monitorId,
