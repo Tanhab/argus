@@ -1,3 +1,5 @@
+export type ConsensusVerdict = 'up' | 'down' | 'degraded' | 'insufficient_data';
+
 export interface Monitor {
   id: string;
   userId: string;
@@ -6,6 +8,8 @@ export interface Monitor {
   isActive: boolean;
   createdAt: Date;
   deactivatedAt: Date | null;
+  lastConsensus: ConsensusVerdict | null;
+  lastConsensusAt: Date | null;
 }
 
 export type ErrorType =
