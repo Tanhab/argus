@@ -11,6 +11,7 @@ I'm building it phase by phase. Each phase tries to do one thing. Whenever I fac
 | [Phase 0 - Foundations](#phase-0--foundations) | Monorepo, Fastify API, structured logging, RFC 7807 errors, multi-stage Docker, CI |
 | [Phase 1 - Single Checker MVP](#phase-1--single-checker-mvp) | Monitor CRUD, in-process checker, partitioned results, ntfy.sh alerts |
 | [Phase 2 - Three Real Checkers](#phase-2--three-real-checkers) | Independent checker processes across 3 regions, API key auth, per-checker alerting |
+| [Phase 3 - Windowed Consensus](#phase-3--windowed-consensus) | 2-of-3 majority voting over a 90s window, advisory-lock serialised evaluation, alerts on consensus transitions |
 
 ## Architecture
 
@@ -22,9 +23,9 @@ graph TD
         API --> DB
     end
 
-    EU[Checker EU - Frankfurt] -->|HTTPS + API key| API
-    AP[Checker AP - Singapore] -->|HTTPS + API key| API
-    US[Checker US - New York] -->|HTTPS + API key| API
+    EU[Checker EU - Frankfurt] -->|HTTP + API key| API
+    AP[Checker AP - Singapore] -->|HTTP + API key| API
+    US[Checker US - New York] -->|HTTP + API key| API
 ```
 
 Each checker runs independently - its own scheduler, its own heartbeat loop, its own network path. Results are POSTed to the API as they happen. No coordination between checkers.
@@ -125,3 +126,36 @@ A running record of decisions I made each phase. Entries stay as-written when la
 - API key revocation requires running SQL directly on the prod DB. No admin UI.
 - Every checker polls every monitor. No sharding or per-region assignment.
 - Partition rollover for `check_results` and `checker_heartbeats` is a manual script.
+- API traffic is HTTP, not HTTPS. The API port is firewalled on the main VPS to the three checker droplet IPs only (ufw + `ufw-docker` to handle Docker's iptables bypass), so the API key crosses three known point-to-point links rather than the open internet - but it is not encrypted in transit. Adding Caddy + Let's Encrypt is blocked on owning a domain; tracked as the next thing to fix when that lands.
+
+### Phase 3 - Windowed Consensus
+
+**Focus:** A check verdict is decided by majority agreement across checkers within a recent time window, not by whichever checker wrote last. One checker having a bad network path no longer produces alerts on its own.
+
+**What's in place:**
+
+- `evaluateConsensus` runs on every result write. Takes a per-monitor `pg_try_advisory_xact_lock(hashtext(monitor_id))`, reads the most-recent result per checker within a 90-second window (`DISTINCT ON (checker_id)`), intersects with checkers that heartbeated in the last 2 minutes, and computes a verdict: `up` / `down` / `degraded` / `insufficient_data`
+- Majority rule: with 3 checkers, 2-of-3 decides. With 2, only a unanimous pair is callable - a split is `degraded`. With 1, the lone vote stands at low confidence
+- Verdict persisted to a denormalised `monitors.last_consensus`; surfaced on `GET /v1/monitors/:id` via a Fastify response schema that whitelists public fields
+- Alerts moved from per-checker to per-consensus-edge. One DOWN ntfy per real `up→down` cross-checker transition, one RECOVERED per `down→up`. Phase 2's `maybeAlert` and `getLastTwoResultsForChecker` deleted
+- Pure `computeConsensus` (unit-tested with literal `WindowResult[]`) split from `evaluateConsensus` (the lock + queries + persist + log shell, integration-tested against a real Postgres via testcontainers)
+- Lock contention skips rather than queues: if a second evaluation for the same monitor can't acquire the lock it returns `null` and the next result write re-evaluates
+
+**Key decisions and tricky bugs:**
+
+- Window is 90 seconds, wider than the 60s default check interval. A 60s window would have dropped any checker even slightly late; 90s gives a slow result time to land and tolerates one missed cycle.
+- Window passed as a parameter, never interpolated into SQL: `NOW() - ($2 || ' seconds')::interval`. Concatenating the constant into the query string would have been safe today and a foot-gun the first time someone made the window configurable.
+- Added a second column `last_alertable_consensus` that only records `up`/`down`. The alert-edge check reads this column, not `last_consensus`. Without it, a transient `up → degraded → down` would have silently consumed the real transition - `degraded` would have overwritten `up` in `last_consensus` and the alert function would have treated `degraded → down` as a first-evaluation and stayed quiet.
+- `medianDurationMs` is `number | null`, never `0`. A `0` reads as "responded in 0ms" to anything that later consumes it as a real measurement.
+- Heartbeat intersection, not just the window. A checker that wrote a result then died mid-window has its vote dropped - the data is stale and a dead checker shouldn't keep voting.
+- Advisory lock keys computed with `hashtext(monitor_id)` server-side. Monitor IDs are UUID strings; advisory lock keys are `bigint`. Hashing in SQL means JS and SQL never disagree on the key. A 32-bit collision space is fine - worst case two unrelated monitors briefly serialise on the same lock.
+- `pg_try_advisory_xact_lock` is the right primitive: `_try_` so contention skips rather than queues, `_xact_` so the lock auto-releases on COMMIT/ROLLBACK and can't leak. Both consensus queries and the UPDATE take `PoolClient` as their first parameter so the type system enforces "run on the same connection that holds the lock" - using the module-level `query` helper would silently grab a different pooled connection.
+- `evaluateConsensus` runs in a separate transaction from `insertCheckResult`. The insert commits first so the new row is visible to the consensus window query.
+- First-evaluation rule: a brand-new monitor whose target is already down does not alert until it has first recorded an `up`. Stops noisy alerts on creation when a target happens to be broken at the moment a monitor is added.
+
+**Limitations of this phase:**
+
+- This is majority voting, not consensus in the Paxos/Raft sense. No leader election, no log replication. Tolerates one checker failing or having a bad network path; would not survive two simultaneous failures.
+- Alerts still fire on every consensus change. A genuinely flapping service - one that really does bounce up/down every 30 seconds - produces an alert per bounce. Removed single-checker false positives but does not yet debounce real flap.
+- The 90-second window has an edge. A checker slow enough to land its result *outside* the window gets evaluated with one fewer vote - a 3-checker monitor momentarily decided 2-of-2.
+- No consensus history. Only the latest verdict is stored, in two denormalised columns. `check_results` remains the source of truth and historical verdicts have to be recomputed.
