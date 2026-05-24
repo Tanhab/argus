@@ -48,6 +48,21 @@ Brings up Postgres, the API on `localhost:3000` (`/health`, `/ready`), and a loc
 
 ---
 
+## Benchmarks
+
+### Phase 3 — consensus suppresses a noisy checker
+
+Target: my Vercel-hosted dev site, monitored by all three checkers at 60s intervals. Impaired `checker-eu` by dropping forwarded TCP 443 from its container for 45s out of every 90s (20 cycles, 30 min). Other two checkers untouched.
+
+| Window           | checker-eu down  | Consensus verdicts | Alerts fired |
+|------------------|------------------|--------------------|--------------|
+| Control (15 min) | 0 / 15 (0.0%)    | 45 up / 0 down     | 0            |
+| Lossy   (30 min) | 10 / 30 (33.3%)  | 105 up / 0 down    | 0            |
+
+All 10 failures were clean 10s `AbortSignal` timeouts. Phase 2 per-checker alerting would have produced ~10 false-positive DOWN+RECOVERED pairs over the same window.
+
+---
+
 ## Engineering Ledger
 
 A running record of decisions I made each phase. Entries stay as-written when later phases ship; the log captures the reasoning at the time, not retrospective tidying.
@@ -144,11 +159,9 @@ A running record of decisions I made each phase. Entries stay as-written when la
 **Key decisions and tricky bugs:**
 
 - Window is 90 seconds, wider than the 60s default check interval. A 60s window would have dropped any checker even slightly late; 90s gives a slow result time to land and tolerates one missed cycle.
-- Window passed as a parameter, never interpolated into SQL: `NOW() - ($2 || ' seconds')::interval`. Concatenating the constant into the query string would have been safe today and a foot-gun the first time someone made the window configurable.
 - Added a second column `last_alertable_consensus` that only records `up`/`down`. The alert-edge check reads this column, not `last_consensus`. Without it, a transient `up → degraded → down` would have silently consumed the real transition - `degraded` would have overwritten `up` in `last_consensus` and the alert function would have treated `degraded → down` as a first-evaluation and stayed quiet.
 - `medianDurationMs` is `number | null`, never `0`. A `0` reads as "responded in 0ms" to anything that later consumes it as a real measurement.
 - Heartbeat intersection, not just the window. A checker that wrote a result then died mid-window has its vote dropped - the data is stale and a dead checker shouldn't keep voting.
-- Advisory lock keys computed with `hashtext(monitor_id)` server-side. Monitor IDs are UUID strings; advisory lock keys are `bigint`. Hashing in SQL means JS and SQL never disagree on the key. A 32-bit collision space is fine - worst case two unrelated monitors briefly serialise on the same lock.
 - `pg_try_advisory_xact_lock` is the right primitive: `_try_` so contention skips rather than queues, `_xact_` so the lock auto-releases on COMMIT/ROLLBACK and can't leak. Both consensus queries and the UPDATE take `PoolClient` as their first parameter so the type system enforces "run on the same connection that holds the lock" - using the module-level `query` helper would silently grab a different pooled connection.
 - `evaluateConsensus` runs in a separate transaction from `insertCheckResult`. The insert commits first so the new row is visible to the consensus window query.
 - First-evaluation rule: a brand-new monitor whose target is already down does not alert until it has first recorded an `up`. Stops noisy alerts on creation when a target happens to be broken at the moment a monitor is added.
