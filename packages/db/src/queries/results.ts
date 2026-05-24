@@ -42,26 +42,3 @@ export async function getRecentResults(monitorId: string, limit: number): Promis
 
   return rows.map(toCheckResult);
 }
-
-export async function getLastTwoResults(monitorId: string): Promise<CheckResult[]> {
-  const rows = await query<CheckResultRow>(
-    `SELECT * FROM check_results WHERE monitor_id =
-        $1 ORDER BY checked_at DESC LIMIT 2`,
-    [monitorId],
-  );
-
-  return rows.map(toCheckResult);
-}
-
-export async function getLastTwoResultsForChecker(
-  monitorId: string,
-  checkerId: string,
-): Promise<CheckResult[]> {
-  const rows = await query<CheckResultRow>(
-    `SELECT * FROM check_results WHERE monitor_id = $1 AND checker_id = $2
-     ORDER BY checked_at DESC LIMIT 2`,
-    [monitorId, checkerId],
-  );
-
-  return rows.map(toCheckResult);
-}

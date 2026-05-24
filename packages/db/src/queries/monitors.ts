@@ -11,6 +11,8 @@ interface MonitorRow {
   deactivated_at: Date | null;
   last_consensus: string | null;
   last_consensus_at: Date | null;
+  last_alertable_consensus: string | null;
+  last_alertable_consensus_at: Date | null;
 }
 
 function toMonitor(r: MonitorRow): Monitor {
@@ -24,6 +26,8 @@ function toMonitor(r: MonitorRow): Monitor {
     deactivatedAt: r.deactivated_at,
     lastConsensus: r.last_consensus as ConsensusVerdict | null,
     lastConsensusAt: r.last_consensus_at,
+    lastAlertableConsensus: r.last_alertable_consensus as ConsensusVerdict | null,
+    lastAlertableConsensusAt: r.last_alertable_consensus_at,
   };
 }
 

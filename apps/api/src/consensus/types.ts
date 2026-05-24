@@ -8,3 +8,8 @@ export interface ConsensusOutcome {
   confidence: Confidence;
   medianDurationMs: number | null;
 }
+
+export interface ConsensusResult {
+  outcome: ConsensusOutcome;
+  previousVerdict: ConsensusVerdict | null;
+}

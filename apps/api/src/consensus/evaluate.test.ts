@@ -66,11 +66,11 @@ describe('evaluateConsensus', () => {
     await seedResult(m.id, 'checker-ap', true, 30);
     await seedResult(m.id, 'checker-us', true, 30);
 
-    const outcome = await evaluateConsensus(m.id);
+    const result = await evaluateConsensus(m.id);
 
-    expect(outcome).not.toBeNull();
-    expect(outcome?.verdict).toBe('up');
-    expect(outcome?.n).toBe(2);
+    expect(result).not.toBeNull();
+    expect(result?.outcome.verdict).toBe('up');
+    expect(result?.outcome.n).toBe(2);
   });
 
   test('inactive checker is dropped from the vote', async () => {
@@ -80,11 +80,11 @@ describe('evaluateConsensus', () => {
     await seedResult(m.id, 'checker-ap', true, 30);
     await seedResult(m.id, 'checker-us', false, 30);
 
-    const outcome = await evaluateConsensus(m.id);
+    const result = await evaluateConsensus(m.id);
 
-    expect(outcome?.verdict).toBe('up');
-    expect(outcome?.n).toBe(2);
-    expect(outcome?.confidence).toBe('medium');
+    expect(result?.outcome.verdict).toBe('up');
+    expect(result?.outcome.n).toBe(2);
+    expect(result?.outcome.confidence).toBe('medium');
   });
 
   test('persists last_consensus and last_consensus_at on the monitor row', async () => {
@@ -104,11 +104,38 @@ describe('evaluateConsensus', () => {
   test('persists insufficient_data when no checker contributes a vote', async () => {
     const m = await monitors.createMonitor(testMonitor);
 
-    const outcome = await evaluateConsensus(m.id);
+    const result = await evaluateConsensus(m.id);
 
-    expect(outcome?.verdict).toBe('insufficient_data');
+    expect(result?.outcome.verdict).toBe('insufficient_data');
     const fetched = await monitors.getMonitor(m.id, testMonitor.userId);
     expect(fetched?.lastConsensus).toBe('insufficient_data');
+  });
+
+  test('first evaluation returns previousVerdict null', async () => {
+    const m = await monitors.createMonitor(testMonitor);
+    await seedHeartbeats(['checker-eu', 'checker-ap', 'checker-us']);
+    await seedResult(m.id, 'checker-eu', true, 30);
+    await seedResult(m.id, 'checker-ap', true, 30);
+    await seedResult(m.id, 'checker-us', true, 30);
+
+    const result = await evaluateConsensus(m.id);
+
+    expect(result?.previousVerdict).toBeNull();
+    expect(result?.outcome.verdict).toBe('up');
+  });
+
+  test('second evaluation returns the prior verdict', async () => {
+    const m = await monitors.createMonitor(testMonitor);
+    await seedHeartbeats(['checker-eu', 'checker-ap', 'checker-us']);
+    await seedResult(m.id, 'checker-eu', true, 30);
+    await seedResult(m.id, 'checker-ap', true, 30);
+    await seedResult(m.id, 'checker-us', true, 30);
+
+    await evaluateConsensus(m.id);
+    const second = await evaluateConsensus(m.id);
+
+    expect(second?.previousVerdict).toBe('up');
+    expect(second?.outcome.verdict).toBe('up');
   });
 
   test('returns null and does not block when the per-monitor lock is held', async () => {
@@ -122,10 +149,10 @@ describe('evaluateConsensus', () => {
       await holder.query('SELECT pg_advisory_xact_lock(hashtext($1))', [m.id]);
 
       const start = Date.now();
-      const outcome = await evaluateConsensus(m.id);
+      const result = await evaluateConsensus(m.id);
       const elapsed = Date.now() - start;
 
-      expect(outcome).toBeNull();
+      expect(result).toBeNull();
       expect(elapsed).toBeLessThan(500);
     } finally {
       await holder.query('ROLLBACK');
@@ -146,10 +173,10 @@ describe('evaluateConsensus', () => {
       await holder.query('BEGIN');
       await holder.query('SELECT pg_advisory_xact_lock(hashtext($1))', [a.id]);
 
-      const outcome = await evaluateConsensus(b.id);
+      const result = await evaluateConsensus(b.id);
 
-      expect(outcome).not.toBeNull();
-      expect(outcome?.verdict).toBe('up');
+      expect(result).not.toBeNull();
+      expect(result?.outcome.verdict).toBe('up');
     } finally {
       await holder.query('ROLLBACK');
       holder.release();
