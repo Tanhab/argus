@@ -1,5 +1,5 @@
 import { query } from '../pool.js';
-import type { Monitor, NewMonitor } from '../types.js';
+import type { ConsensusVerdict, Monitor, NewMonitor } from '../types.js';
 
 interface MonitorRow {
   id: string;
@@ -9,6 +9,8 @@ interface MonitorRow {
   is_active: boolean;
   created_at: Date;
   deactivated_at: Date | null;
+  last_consensus: string | null;
+  last_consensus_at: Date | null;
 }
 
 function toMonitor(r: MonitorRow): Monitor {
@@ -20,6 +22,8 @@ function toMonitor(r: MonitorRow): Monitor {
     isActive: r.is_active,
     createdAt: r.created_at,
     deactivatedAt: r.deactivated_at,
+    lastConsensus: r.last_consensus as ConsensusVerdict | null,
+    lastConsensusAt: r.last_consensus_at,
   };
 }
 
