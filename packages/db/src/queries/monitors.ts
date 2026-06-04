@@ -1,5 +1,6 @@
+import type { PoolClient } from 'pg';
 import { query } from '../pool.js';
-import type { ConsensusVerdict, Monitor, NewMonitor } from '../types.js';
+import type { ConsensusVerdict, Monitor, MonitorStatus, NewMonitor } from '../types.js';
 
 interface MonitorRow {
   id: string;
@@ -13,6 +14,12 @@ interface MonitorRow {
   last_consensus_at: Date | null;
   last_alertable_consensus: string | null;
   last_alertable_consensus_at: Date | null;
+  status: string;
+  status_changed_at: Date | null;
+  consecutive_failures: number;
+  consecutive_successes: number;
+  down_threshold_seconds: number;
+  recovery_threshold_seconds: number;
 }
 
 function toMonitor(r: MonitorRow): Monitor {
@@ -28,6 +35,12 @@ function toMonitor(r: MonitorRow): Monitor {
     lastConsensusAt: r.last_consensus_at,
     lastAlertableConsensus: r.last_alertable_consensus as ConsensusVerdict | null,
     lastAlertableConsensusAt: r.last_alertable_consensus_at,
+    status: r.status as MonitorStatus,
+    statusChangedAt: r.status_changed_at,
+    consecutiveFailures: r.consecutive_failures,
+    consecutiveSuccesses: r.consecutive_successes,
+    downThresholdSeconds: r.down_threshold_seconds,
+    recoveryThresholdSeconds: r.recovery_threshold_seconds,
   };
 }
 
@@ -51,7 +64,7 @@ export async function listMonitors(userId: string): Promise<Monitor[]> {
 }
 
 export async function getMonitor(id: string, userId: string): Promise<Monitor | null> {
-  const rows = await query<MonitorRow>('SELECT * FROM monitors where id = $1 AND user_id = $2 ', [
+  const rows = await query<MonitorRow>('SELECT * FROM monitors WHERE id = $1 AND user_id = $2 ', [
     id,
     userId,
   ]);
@@ -77,8 +90,53 @@ export async function getActiveMonitor(monitorId: string): Promise<Monitor | nul
 export async function deactivateMonitor(id: string, userId: string): Promise<boolean> {
   const rows = await query<MonitorRow>(
     `UPDATE  monitors SET is_active = false, deactivated_at = NOW()
-    WHERE id = $1 AND user_id = $2 AND is_active = true returning *`,
+    WHERE id = $1 AND user_id = $2 AND is_active = true RETURNING *`,
     [id, userId],
   );
   return rows.length > 0;
+}
+
+export interface UpdateMonitorState {
+  id: string;
+  expectedStatus: MonitorStatus;
+  newStatus: MonitorStatus;
+  newConsecutiveFailures: number;
+  newConsecutiveSuccesses: number;
+  statusChanged: boolean;
+}
+
+export async function updateMonitorState(
+  tx: PoolClient,
+  args: UpdateMonitorState,
+): Promise<boolean> {
+  const { rowCount } = await tx.query(
+    `UPDATE monitors SET
+       status                 = $2,
+       consecutive_failures   = $3,
+       consecutive_successes  = $4,
+       status_changed_at      = CASE WHEN $6 THEN NOW() ELSE status_changed_at END
+     WHERE id = $1 AND status = $5`,
+    [
+      args.id,
+      args.newStatus,
+      args.newConsecutiveFailures,
+      args.newConsecutiveSuccesses,
+      args.expectedStatus,
+      args.statusChanged,
+    ],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+/**
+ * Reads a monitor inside a transaction that has already acquired the per-monitor
+ * advisory lock. The `ForUpdate` suffix is a signpost for that calling context —
+ * it does NOT issue `SELECT ... FOR UPDATE`. The advisory lock already serialises
+ * evaluations per monitor; a row lock on top would be redundant.
+ */
+
+export async function getMonitorByIdForUpdate(tx: PoolClient, id: string): Promise<Monitor | null> {
+  const result = await tx.query<MonitorRow>(`SELECT * FROM monitors WHERE id = $1`, [id]);
+
+  return result.rows[0] ? toMonitor(result.rows[0]) : null;
 }

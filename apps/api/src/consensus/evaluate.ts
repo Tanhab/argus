@@ -1,5 +1,6 @@
-import { type ConsensusVerdict, consensus, withTransaction } from '@argus/db';
+import { consensus, monitors as monitorsQ, withTransaction } from '@argus/db';
 import { createLogger } from '@argus/logger';
+import { applyStateTransition } from '../state/transition.js';
 import { computeConsensus } from './compute.js';
 import type { ConsensusResult } from './types.js';
 
@@ -16,12 +17,12 @@ export async function evaluateConsensus(monitorId: string): Promise<ConsensusRes
       return null;
     }
 
-    const { rows: prevRows } = await tx.query<{ last_alertable_consensus: string | null }>(
-      'SELECT last_alertable_consensus FROM monitors WHERE id = $1',
-      [monitorId],
-    );
-    const previousVerdict = (prevRows[0]?.last_alertable_consensus ??
-      null) as ConsensusVerdict | null;
+    // Full monitor under the advisory lock: feeds the state machine (status, counters,
+    // thresholds) and still carries last_alertable_consensus for the Phase 3 alert path.
+    const monitor = await monitorsQ.getMonitorByIdForUpdate(tx, monitorId);
+    if (!monitor) return null; // soft-deleted between insert and eval; harmless
+
+    const previousVerdict = monitor.lastAlertableConsensus;
 
     const results = await consensus.getResultsInWindow(tx, monitorId);
     const activeCheckers = await consensus.getActiveCheckers(tx);
@@ -32,6 +33,9 @@ export async function evaluateConsensus(monitorId: string): Promise<ConsensusRes
       await consensus.updateLastAlertableConsensus(tx, monitorId, outcome.verdict);
     }
 
+    // State machine — same tx, same advisory lock, after consensus is persisted.
+    const transition = await applyStateTransition(tx, monitor, outcome);
+
     log.info(
       {
         monitorId,
@@ -39,9 +43,14 @@ export async function evaluateConsensus(monitorId: string): Promise<ConsensusRes
         previousVerdict,
         n: outcome.n,
         confidence: outcome.confidence,
+        transitioned: transition.transitioned,
+        fromStatus: transition.fromStatus,
+        toStatus: transition.toStatus,
+        alertReason: transition.alertReason,
       },
       'consensus evaluated',
     );
-    return { outcome, previousVerdict };
+
+    return { outcome, previousVerdict, transition };
   });
 }
