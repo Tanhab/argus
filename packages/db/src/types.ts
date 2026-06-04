@@ -1,4 +1,5 @@
 export type ConsensusVerdict = 'up' | 'down' | 'degraded' | 'insufficient_data';
+export type MonitorStatus = 'pending' | 'up' | 'degraded' | 'down' | 'recovering';
 
 export interface Monitor {
   id: string;
@@ -12,6 +13,12 @@ export interface Monitor {
   lastConsensusAt: Date | null;
   lastAlertableConsensus: ConsensusVerdict | null;
   lastAlertableConsensusAt: Date | null;
+  status: MonitorStatus;
+  statusChangedAt: Date | null;
+  consecutiveFailures: number;
+  consecutiveSuccesses: number;
+  downThresholdSeconds: number;
+  recoveryThresholdSeconds: number;
 }
 
 export type ErrorType =
