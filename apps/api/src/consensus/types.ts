@@ -1,4 +1,5 @@
 import type { ConsensusVerdict } from '@argus/db';
+import type { TransitionResult } from '../state/transition.js';
 
 export type Confidence = 'high' | 'medium' | 'low' | 'none';
 
@@ -12,4 +13,5 @@ export interface ConsensusOutcome {
 export interface ConsensusResult {
   outcome: ConsensusOutcome;
   previousVerdict: ConsensusVerdict | null;
+  transition: TransitionResult;
 }
