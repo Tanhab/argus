@@ -1,8 +1,8 @@
 import { type ErrorType, monitors, results } from '@argus/db';
 import type { FastifyInstance } from 'fastify';
-import { maybeAlertOnConsensus } from '../../consensus/alert.js';
 import { evaluateConsensus } from '../../consensus/evaluate.js';
 import { NotFoundError } from '../../errors.js';
+import { enqueueAlert } from '../../notifier/enqueue.js';
 import { requireCheckerAuth } from './auth.js';
 
 const bodySchema = {
@@ -59,13 +59,18 @@ export async function resultsRoute(app: FastifyInstance) {
       });
 
       const consensusResult = await evaluateConsensus(b.monitorId);
-      if (consensusResult) {
-        await maybeAlertOnConsensus(
-          monitor,
-          consensusResult.outcome,
-          consensusResult.previousVerdict,
-          req.log,
-        );
+      // Alert on state-machine transitions, not consensus edges. evaluateConsensus has
+      // already committed by here, so we enqueue outside its transaction: a crash between
+      // COMMIT and send loses the alert, but status_events is the source of truth (a known,
+      // documented best-effort tradeoff). The pg-boss queue handles retries on delivery.
+      if (consensusResult?.transition.alertReason) {
+        await enqueueAlert(req.server.boss, {
+          monitorId: monitor.id,
+          monitorUrl: monitor.url,
+          reason: consensusResult.transition.alertReason,
+          occurredAt: new Date().toISOString(),
+          n: consensusResult.outcome.n,
+        });
       }
 
       reply.status(202);

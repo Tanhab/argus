@@ -1,14 +1,35 @@
 import { ping } from '@argus/db';
 import { createLogger } from '@argus/logger';
 import Fastify, { type FastifyError } from 'fastify';
+import type { PgBoss } from 'pg-boss';
+import { config } from './config.js';
 import { ArgusError } from './errors.js';
+import { startBoss, stopBoss } from './notifier/boss.js';
+import { registerAlertWorker } from './notifier/worker.js';
 import { internalRoutes } from './routes/internal/index.js';
 import { monitorsRoutes } from './routes/monitors.js';
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    boss: PgBoss;
+  }
+}
 
 export async function buildApp() {
   const app = Fastify({
     loggerInstance: createLogger('api'),
     genReqId: () => crypto.randomUUID(),
+  });
+
+  // The pg-boss instance lives and dies with the app. buildApp starts it and registers the
+  // alert worker; onClose stops it so connections release cleanly (see notifier/boss.ts).
+  // Read DATABASE_URL live (not via the import-time config snapshot) so integration tests
+  // that swap the env to a testcontainer URI before buildApp connect to the right DB.
+  const boss = await startBoss(process.env.DATABASE_URL ?? config.databaseUrl);
+  app.decorate('boss', boss);
+  await registerAlertWorker(boss, app.log);
+  app.addHook('onClose', async () => {
+    await stopBoss(boss);
   });
 
   app.setErrorHandler((err: FastifyError, req, reply) => {

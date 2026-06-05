@@ -9,4 +9,8 @@ export const config = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   monitorUserId: requireEnv('MONITOR_USER_ID'),
   ntfyTopicUrl: requireEnv('NTFY_TOPIC_URL'),
+  // pg-boss is constructed in the api process, so the api needs the connection string
+  // directly. The db package validates DATABASE_URL for its own pool; this is a second,
+  // independent read for the queue's own connection.
+  databaseUrl: requireEnv('DATABASE_URL'),
 };
