@@ -12,6 +12,7 @@ I'm building it phase by phase. Each phase tries to do one thing. Whenever I fac
 | [Phase 1 - Single Checker MVP](#phase-1--single-checker-mvp) | Monitor CRUD, in-process checker, partitioned results, ntfy.sh alerts |
 | [Phase 2 - Three Real Checkers](#phase-2--three-real-checkers) | Independent checker processes across 3 regions, API key auth, per-checker alerting |
 | [Phase 3 - Windowed Consensus](#phase-3--windowed-consensus) | 2-of-3 majority voting over a 90s window, advisory-lock serialised evaluation, alerts on consensus transitions |
+| [Phase 4 - State Machine with Flap Suppression](#phase-4--state-machine-with-flap-suppression) | Four-state machine with time-based thresholds, append-only `status_events`, pg-boss alert queue, alerts on state transitions |
 
 ## Architecture
 
@@ -60,6 +61,19 @@ Target: my Vercel-hosted dev site, monitored by all three checkers at 60s interv
 | Lossy   (30 min) | 10 / 30 (33.3%)  | 105 up / 0 down    | 0            |
 
 All 10 failures were clean 10s `AbortSignal` timeouts. Phase 2 per-checker alerting would have produced ~10 false-positive DOWN+RECOVERED pairs over the same window.
+
+### Phase 4 — flap suppression
+
+Target: a controllable `fake-target` server on the checker-eu droplet, monitored by all three checkers at 30s intervals with `down_threshold_seconds=60` and `recovery_threshold_seconds=60` (so the machine declares DOWN after two consecutive `down` checks and recovers after two `up`). Two runs of 100 flap cycles each, scripted with `tools/flap-script.sh`. "Consensus edges" is the alert count the previous phase's consensus-edge alerting would have produced over the same traffic.
+
+| Run | Cycles | Fail / OK phase | Consensus edges | DOWN alerts | RECOVERED alerts |
+|-----|--------|-----------------|-----------------|-------------|------------------|
+| Sustained outages | 100 | 20s / 20s | 295 | 72 | 72 |
+| Sub-threshold flap | 100 | 10s / 10s | 199 | **0** | **0** |
+
+In the sustained run each 20s failure phase was long enough for two consecutive checks to both observe it, so 72 of the cycles became genuine outages. The state machine collapsed each outage's `up → degraded → down` churn into a single DOWN+RECOVERED pair: 295 consensus edges became 144 alerts.
+
+In the sub-threshold run each 10s failure phase was too short for two consecutive 30s checks to both catch it. All 99 observed failures entered DEGRADED and slid back to UP silently - zero crossed the threshold, zero alerts fired, against 199 consensus edges the old path would have alerted on. That is the phase: transient flap produces no alerts at all.
 
 ---
 
@@ -172,3 +186,33 @@ A running record of decisions I made each phase. Entries stay as-written when la
 - Alerts still fire on every consensus change. A genuinely flapping service - one that really does bounce up/down every 30 seconds - produces an alert per bounce. Removed single-checker false positives but does not yet debounce real flap.
 - The 90-second window has an edge. A checker slow enough to land its result *outside* the window gets evaluated with one fewer vote - a 3-checker monitor momentarily decided 2-of-2.
 - No consensus history. Only the latest verdict is stored, in two denormalised columns. `check_results` remains the source of truth and historical verdicts have to be recomputed.
+
+### Phase 4 - State Machine with Flap Suppression
+
+**Focus:** Alerts fire on real state transitions, not on every consensus edge. A four-state machine - UP / DEGRADED / DOWN / RECOVERING - sits between the consensus verdict and the alert. A failure or recovery has to persist for a configurable time before the machine declares anything, so a service that blips down for one cycle and back never pages anyone.
+
+**What's in place:**
+
+- `applyStateTransition` runs immediately after `computeConsensus`, inside the same `withTransaction` + `pg_try_advisory_xact_lock` that consensus already owns. The whole chain - consensus query, verdict, state transition, `status_events` insert - is one atomic unit. Anything throws and everything rolls back; the next result write retriggers it
+- `decideTransition` is a pure function over `(Monitor, ConsensusOutcome)`, unit-tested with literal objects, split from the `applyStateTransition` I/O shell the same way `computeConsensus` is split from `evaluateConsensus`. `consecutive_failures` advances on each `down` while the status is `up`/`degraded`; `consecutive_successes` advances on each `up` while `down`/`recovering`. Thresholds are stored in seconds (`down_threshold_seconds`, `recovery_threshold_seconds`) and converted to a check count internally with `Math.ceil(threshold / interval_seconds)`
+- DEGRADED and RECOVERING are the two waiting rooms that absorb flap. A blip enters DEGRADED; if it recovers before the count reaches the threshold it slides back to UP silently. Only a sustained outage graduates DEGRADED to DOWN (one DOWN alert), and only a sustained recovery graduates RECOVERING to UP (one RECOVERED alert)
+- `status_events` is an append-only, partitioned-by-month log of transitions only - no-op evaluations write nothing. It records what actually changed and when
+- Alerts moved from inline ntfy calls to a pg-boss `alerts` queue with retry/backoff. A worker drains it and sends ntfy. `down_declared` and `recovered_declared` are the only alertable transitions
+- `tools/fake-target` is a controllable HTTP target so the 100-cycle flap bench can script outages on demand
+
+**Key decisions and tricky bugs:**
+
+- `monitors.status` is the state-machine state; `monitors.last_alertable_consensus` is the consensus layer's prior-verdict memory. Two columns, two layers, deliberately not unified - which let the old consensus-edge alert path be deleted without touching the state machine. `last_alertable_consensus` is kept as informational.
+- A bounce from RECOVERING back to DOWN resets `consecutive_failures` to 1, not the stale pre-DOWN value - in RECOVERING we were counting successes, so the old failure count is meaningless - and does not re-alert, because the original DOWN already paged.
+- The atomic UPDATE keeps an expected-status guard (`WHERE id = $1 AND status = $expected`) even though the advisory lock should make a stale write impossible. One `AND` clause, defending against anything that reaches in outside the lock. Through `evaluateConsensus` the status is always read fresh inside the lock, so the guard can only be exercised by calling `applyStateTransition` directly with a deliberately-stale monitor.
+- Alert enqueue happens after the consensus transaction commits, not inside it - keeping pg-boss out of the transaction avoids stretching how long the advisory lock is held.
+- pg-boss reads `DATABASE_URL` at call time, not from the import-time config snapshot. The integration tests swap the env to a testcontainer URI inside `beforeAll`, after config has already frozen - same reason `packages/db` exposes `resetPool`. The boss lifetime is tied to the Fastify app, so `await app.close()` stops it; without that, pg-boss keeps connections open and Vitest hangs on exit.
+
+**Limitations of this phase:**
+
+- Alerts fire strictly less often than before. A target that flips down for one cycle then back up no longer produces a DOWN+RECOVERED pair - it produces nothing. That is the point of the phase, but it is a behaviour change worth stating.
+- Alert delivery is best-effort. pg-boss retries transient ntfy failures, but a crash between the transaction COMMIT and `boss.send` loses that alert. `status_events` is authoritative for what happened; the alert stream is informational.
+- No per-checker counters. The machine operates on consensus verdicts only - it can't tell "the same checker failed N times" from "different checkers each failed once across N cycles."
+- No alert deduplication across separate outages. One outage that bounces down/recovering/down/recovering/up alerts once, on the final recovery. But two distinct outages back-to-back produce two DOWN alerts.
+- `status_events` partitions roll over manually - the same limitation as `check_results`, now on a second partitioned table.
+- No retroactive transitions. If the API is down while a target is down, on restart the machine evaluates against the current result; it does not reconstruct what happened during the gap. `check_results` keeps the data.
