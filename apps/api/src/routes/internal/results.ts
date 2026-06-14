@@ -2,7 +2,7 @@ import { type ErrorType, monitors, results } from '@argus/db';
 import type { FastifyInstance } from 'fastify';
 import { evaluateConsensus } from '../../consensus/evaluate.js';
 import { NotFoundError } from '../../errors.js';
-import { enqueueAlert } from '../../notifier/enqueue.js';
+import { enqueueAlert, enqueueAnomalyAlert } from '../../notifier/enqueue.js';
 import { requireCheckerAuth } from './auth.js';
 
 const bodySchema = {
@@ -59,10 +59,11 @@ export async function resultsRoute(app: FastifyInstance) {
       });
 
       const consensusResult = await evaluateConsensus(b.monitorId);
-      // Alert on state-machine transitions, not consensus edges. evaluateConsensus has
+      // Alert on state-machine transitions and latency anomalies. evaluateConsensus has
       // already committed by here, so we enqueue outside its transaction: a crash between
-      // COMMIT and send loses the alert, but status_events is the source of truth (a known,
-      // documented best-effort tradeoff). The pg-boss queue handles retries on delivery.
+      // COMMIT and send loses the alert, but status_events / anomaly_events is the source
+      // of truth (a known, documented best-effort tradeoff). The pg-boss queue handles
+      // retries on delivery.
       if (consensusResult?.transition.alertReason) {
         await enqueueAlert(req.server.boss, {
           monitorId: monitor.id,
@@ -70,6 +71,17 @@ export async function resultsRoute(app: FastifyInstance) {
           reason: consensusResult.transition.alertReason,
           occurredAt: new Date().toISOString(),
           n: consensusResult.outcome.n,
+        });
+      }
+      if (consensusResult?.anomaly) {
+        await enqueueAnomalyAlert(req.server.boss, {
+          monitorId: monitor.id,
+          monitorUrl: monitor.url,
+          direction: consensusResult.anomaly.direction,
+          zScore: consensusResult.anomaly.zScore,
+          durationMs: consensusResult.anomaly.durationMs,
+          baselineEwma: consensusResult.anomaly.baselineEwma,
+          occurredAt: new Date().toISOString(),
         });
       }
 
