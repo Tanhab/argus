@@ -13,6 +13,7 @@ I'm building it phase by phase. Each phase tries to do one thing. Whenever I fac
 | [Phase 2 - Three Real Checkers](#phase-2--three-real-checkers) | Independent checker processes across 3 regions, API key auth, per-checker alerting |
 | [Phase 3 - Windowed Consensus](#phase-3--windowed-consensus) | 2-of-3 majority voting over a 90s window, advisory-lock serialised evaluation, alerts on consensus transitions |
 | [Phase 4 - State Machine with Flap Suppression](#phase-4--state-machine-with-flap-suppression) | Four-state machine with time-based thresholds, append-only `status_events`, pg-boss alert queue, alerts on state transitions |
+| [Phase 5 - EWMA Latency Anomaly Detection](#phase-5--ewma-latency-anomaly-detection) | Online EWMA baseline + z-score, `anomaly_events` log, slow-response alerts via existing pg-boss queue |
 
 ## Architecture
 
@@ -74,6 +75,30 @@ Target: a controllable `fake-target` server on the checker-eu droplet, monitored
 In the sustained run each 20s failure phase was long enough for two consecutive checks to both observe it, so 72 of the cycles became genuine outages. The state machine collapsed each outage's `up → degraded → down` churn into a single DOWN+RECOVERED pair: 295 consensus edges became 144 alerts.
 
 In the sub-threshold run each 10s failure phase was too short for two consecutive 30s checks to both catch it. All 99 observed failures entered DEGRADED and slid back to UP silently - zero crossed the threshold, zero alerts fired, against 199 consensus edges the old path would have alerted on. That is the phase: transient flap produces no alerts at all.
+
+### Phase 5 — EWMA latency anomaly
+
+Target: `http://138.68.109.43:7070/` (same `fake-target` as Phase 4), monitored by all three checkers at 30s intervals. Driver: `tools/slow-script.sh` flips `/control/slow/400`, waits 120s, then `/control/ok`.
+
+The baseline was warmed naturally - the monitor had been running against the live target long past the 30-sample warm-up gate, so at injection it held 342 samples at ~168ms with σ≈7.9. That baseline is the genuine steady-state consensus median across the three regions (Frankfurt's low RTT plus Singapore/New York at ~300ms), not a hand-picked number.
+
+Bench run (2026-06-14 UTC): `/control/slow/400` at 20:45:40, `/control/ok` at 20:47:42.
+
+| Metric | Target | Actual |
+|--------|--------|--------|
+| Baseline EWMA before inject | natural warm-up | ~168ms, σ≈7.9, 342 samples |
+| Cycles to SLOW alert (post-inject) | ≤ ~3 | **~1** (first row ~4s, alert ~6s) |
+| Firing z-score (post-inject) | > 3 | **21.11** (median 322ms vs baseline 163) |
+| `monitors.status` during anomaly | `up` | **up** |
+| Post-recovery anomalies (120s window) | clears | **0 rows** |
+| Alert category | SLOW, not DOWN | **yes** (`kind: anomaly`, turtle tag) |
+
+`duration_ms` on an anomaly row is the consensus **median** across three checkers, not the 400ms `/control/slow/` floor - Frankfurt adds ~400ms to a low RTT, Singapore/New York add ~400ms on top of ~300ms RTT, so the median lands between them (~320–570ms over the slow phase).
+
+Two honest readings from the live data:
+
+- **The 3σ rule is twitchy on a tight baseline.** Before injection, with σ as small as ~3.9, a 14ms jitter (163→177ms) crossed z=3 and fired a SLOW alert. A fixed multiplier over-fires when the variance is genuinely small.
+- **A sustained slowdown self-quiets.** The first slow reading screamed (z=21.1), but each subsequent slow reading folded into the EWMA - the baseline climbed 163→187→223ms and σ blew out 7.5→62→110, so z fell to 3.9 then 3.2 within three cycles. The detector is loud on the *onset* of a step change and progressively deaf to it once the baseline chases the new level. By bench end the EWMA sat at ~179ms, drifting back toward steady state.
 
 ---
 
@@ -216,3 +241,37 @@ A running record of decisions I made each phase. Entries stay as-written when la
 - No alert deduplication across separate outages. One outage that bounces down/recovering/down/recovering/up alerts once, on the final recovery. But two distinct outages back-to-back produce two DOWN alerts.
 - `status_events` partitions roll over manually - the same limitation as `check_results`, now on a second partitioned table.
 - No retroactive transitions. If the API is down while a target is down, on restart the machine evaluates against the current result; it does not reconstruct what happened during the gap. `check_results` keeps the data.
+
+### Phase 5 - EWMA Latency Anomaly Detection
+
+**Focus:** Detect a service responding slower than its own baseline while still UP - a signal the up/down FSM cannot see. One online statistic (EWMA mean + EWMA variance), one z-score threshold, an `anomaly_events` audit log, and SLOW alerts on the existing pg-boss queue.
+
+**What's in place:**
+
+- `updateEwma` pure function (`apps/api/src/ewma/update.ts`) - EWMA mean/variance, z-score computed off the *previous* baseline, warm-up gate at 30 samples. Split from the I/O in `evaluateConsensus` the same way `decide.ts` splits from `transition.ts`. Ten unit tests cover cold start, warm-up, step changes, self-poisoning, and gradual drift
+- EWMA columns on `monitors` (`ewma_duration_ms`, `ewma_variance`, `ewma_sample_count`); `anomaly_events` partitioned-by-month with composite PK `(occurred_at, id)`
+- `evaluateConsensus` runs EWMA after the FSM transition, inside the same advisory-lock transaction. Baseline UPDATE + `anomaly_events` INSERT are durable; pg-boss enqueue is post-commit in `results.ts` - same tradeoff as Phase 4 FSM alerts
+- One `alerts` queue, two job kinds (`kind: 'transition' | 'anomaly'`). Worker branches on `kind`: SLOW/turtle for anomalies, rotating_light/white_check_mark for outages
+
+**Key decisions and tricky bugs:**
+
+- Z-score and variance are computed against the **previous** baseline before folding the new reading in. Updating the mean first lets a spike partially mask itself - unit test #7 exists to pin the ordering
+- `anomaly_events` stores the **pre-reading** baseline (`baseline_ewma`, `baseline_std_dev`) - the expectation that was violated, not the post-update values
+- Flat warm-up (variance 0) guards `prevStdDev > 0` before dividing - otherwise `z = diff/0`. Unit test #9
+- The live DoD ran against a naturally-warmed baseline (342 samples, ~168ms, σ≈7.9) - no seeding. The `params` argument on `updateEwma` defaults to the production constants but lets the unit tests reach steady state without folding 30 readings, so the test suite never depends on a seeded database
+- `duration_ms` on an anomaly row is the consensus **median** across three checkers, not the fake-target's `/control/slow/` floor. eu adds ~400ms to a low RTT; ap/us add ~400ms on top of ~300ms RTT - the median lands between them
+- The live run surfaced two things the unit tests only imply. With σ as small as ~3.9 a 14ms jitter crossed z=3 and fired before injection - a fixed 3σ multiplier over-fires on a low-variance baseline. And a sustained slowdown self-quiets: the first slow reading hit z=21.1, but as each slow reading folded in, the baseline climbed 163→187→223ms and z fell to ~3.2 within three cycles. The detector is loud on the onset of a step and progressively deaf once the baseline chases it
+
+
+**Limitations of this phase:**
+
+- EWMA catches **step changes** in latency, not **gradual drift** - a slow leak over hours pulls the baseline with it and never trips the z-score (unit test 6: +2ms x 50 never flags)
+- A **sustained** step also self-quiets: the onset fires loudly, but the baseline chases the new level within a few cycles and the z-score collapses (the live DoD watched z fall 21→3.2 across three slow readings). The alert is reliable on the *transition*, not on the steady slow state that follows
+- The fixed **3σ threshold over-fires on a low-variance baseline** - when σ is a few milliseconds, ordinary jitter clears it (a 14ms move fired z=3 in the live run). The multiplier doesn't adapt to how tight the baseline is
+- One baseline off the **consensus median**, not per-checker EWMAs - cannot tell "the service is slow" from "one checker's path is slow"
+- No seasonality - a service slower at peak will, after a few peak cycles, pull its baseline toward peak and under-detect off-peak
+- EWMA-style online variance is simpler and more biased than Welford's algorithm - appropriate for a moving baseline, not a stationary one
+- α=0.15 chosen without production tuning data - middle ground between responsiveness and false positives
+- Anomaly never changes `monitors.status` - two independent layers
+- Alert delivery is best-effort post-commit; `anomaly_events` is authoritative for what fired
+- `anomaly_events` partitions roll over manually - same as `status_events`

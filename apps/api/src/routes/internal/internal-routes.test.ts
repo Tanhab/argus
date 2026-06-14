@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { monitors, query, resetPool } from '@argus/db';
+import { anomalyEvents, monitors, query, resetPool } from '@argus/db';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { buildApp } from '../../app.js';
@@ -172,5 +172,59 @@ describe('internal routes — results', () => {
       payload: { monitorId: 'does-not-exist', isUp: true },
     });
     expect(res.statusCode).toBe(404);
+  });
+
+  // Boundary contract: drive the EWMA anomaly path through the real route with the exact
+  // body apps/checker sends (CheckResultPayload — all five fields, durationMs present), not
+  // by calling evaluateConsensus directly. A permissive schema that silently dropped
+  // durationMs would pass the unit/integration EWMA tests but break here.
+  test('a slow result POSTed through the route fires an anomaly without changing status', async () => {
+    const m = await monitors.createMonitor({
+      userId: 'test-user',
+      url: 'https://example.com',
+      intervalSeconds: 60,
+    });
+    // Warm baseline ~100ms (seeded — the warm-up gate is what we are not testing here).
+    await query(
+      `UPDATE monitors SET ewma_duration_ms = 100, ewma_variance = 25, ewma_sample_count = 50 WHERE id = $1`,
+      [m.id],
+    );
+    // Two other checkers + all three heartbeats so the route POST is the third up vote and
+    // consensus resolves to `up` with a non-null median (the EWMA input contract).
+    for (const id of ['checker-eu', 'checker-ap', 'checker-us']) {
+      await query('INSERT INTO checker_heartbeats (checker_id, recorded_at) VALUES ($1, NOW())', [
+        id,
+      ]);
+    }
+    for (const id of ['checker-ap', 'checker-us']) {
+      await query(
+        `INSERT INTO check_results (monitor_id, checker_id, is_up, duration_ms, checked_at)
+         VALUES ($1, $2, true, 400, NOW())`,
+        [m.id, id],
+      );
+    }
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/internal/results',
+      headers: { 'x-api-key': RAW_KEY },
+      payload: {
+        monitorId: m.id,
+        isUp: true,
+        statusCode: 200,
+        durationMs: 400,
+        errorType: null,
+      },
+    });
+    expect(res.statusCode).toBe(202);
+
+    const events = await anomalyEvents.getRecentAnomalies(m.id, 1);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.direction).toBe('slower');
+    expect(events[0]?.zScore).toBeGreaterThan(3);
+    expect(events[0]?.baselineEwma).toBeCloseTo(100, 0);
+
+    const fetched = await monitors.getMonitor(m.id, 'test-user');
+    expect(fetched?.status).toBe('up');
   });
 });
