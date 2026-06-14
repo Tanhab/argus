@@ -20,6 +20,9 @@ interface MonitorRow {
   consecutive_successes: number;
   down_threshold_seconds: number;
   recovery_threshold_seconds: number;
+  ewma_duration_ms: number | null;
+  ewma_variance: number | null;
+  ewma_sample_count: number;
 }
 
 function toMonitor(r: MonitorRow): Monitor {
@@ -41,6 +44,9 @@ function toMonitor(r: MonitorRow): Monitor {
     consecutiveSuccesses: r.consecutive_successes,
     downThresholdSeconds: r.down_threshold_seconds,
     recoveryThresholdSeconds: r.recovery_threshold_seconds,
+    ewmaDurationMs: r.ewma_duration_ms,
+    ewmaVariance: r.ewma_variance,
+    ewmaSampleCount: r.ewma_sample_count,
   };
 }
 
@@ -139,4 +145,22 @@ export async function getMonitorByIdForUpdate(tx: PoolClient, id: string): Promi
   const result = await tx.query<MonitorRow>(`SELECT * FROM monitors WHERE id = $1`, [id]);
 
   return result.rows[0] ? toMonitor(result.rows[0]) : null;
+}
+
+export interface UpdateEwmaState {
+  id: string;
+  ewmaDurationMs: number;
+  ewmaVariance: number;
+  ewmaSampleCount: number;
+}
+
+export async function updateEwmaState(tx: PoolClient, args: UpdateEwmaState): Promise<void> {
+  await tx.query(
+    `UPDATE monitors SET
+       ewma_duration_ms  = $2,
+       ewma_variance     = $3,
+       ewma_sample_count = $4
+     WHERE id = $1`,
+    [args.id, args.ewmaDurationMs, args.ewmaVariance, args.ewmaSampleCount],
+  );
 }

@@ -1,5 +1,6 @@
 export { env } from './env.js';
 export { ping, pool, query, resetPool } from './pool.js';
+export * as anomalyEvents from './queries/anomaly-events.js';
 export * as apiKeys from './queries/api-keys.js';
 export type { WindowResult } from './queries/consensus.js';
 export * as consensus from './queries/consensus.js';

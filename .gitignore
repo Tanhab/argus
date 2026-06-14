@@ -9,3 +9,4 @@ misc/
 !.vscode/settings.json
 !.vscode/extensions.json
 .claude/
+CLAUDE.md
