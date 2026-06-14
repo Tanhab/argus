@@ -19,6 +19,25 @@ export interface Monitor {
   consecutiveSuccesses: number;
   downThresholdSeconds: number;
   recoveryThresholdSeconds: number;
+  ewmaDurationMs: number | null;
+  ewmaVariance: number | null;
+  ewmaSampleCount: number;
+}
+
+export type AnomalyDirection = 'slower' | 'faster';
+
+export interface NewAnomalyEvent {
+  monitorId: string;
+  direction: AnomalyDirection;
+  zScore: number;
+  durationMs: number;
+  baselineEwma: number;
+  baselineStdDev: number;
+}
+
+export interface AnomalyEvent extends NewAnomalyEvent {
+  id: number;
+  occurredAt: Date;
 }
 
 export type ErrorType =
