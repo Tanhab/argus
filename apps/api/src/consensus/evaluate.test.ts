@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url';
-import { monitors, pool, query, resetPool } from '@argus/db';
+import { anomalyEvents, monitors, pool, query, resetPool } from '@argus/db';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { evaluateConsensus } from './evaluate.js';
@@ -28,7 +28,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await query('TRUNCATE monitors, check_results, checker_heartbeats CASCADE');
+  await query('TRUNCATE monitors, check_results, checker_heartbeats, anomaly_events CASCADE');
 });
 
 const testMonitor = {
@@ -50,11 +50,12 @@ async function seedResult(
   checkerId: string,
   isUp: boolean,
   ageSeconds: number,
+  durationMs = 100,
 ): Promise<void> {
   await query(
     `INSERT INTO check_results (monitor_id, checker_id, is_up, duration_ms, checked_at)
-     VALUES ($1, $2, $3, 100, NOW() - ($4 || ' seconds')::interval)`,
-    [monitorId, checkerId, isUp, ageSeconds],
+     VALUES ($1, $2, $3, $4, NOW() - ($5 || ' seconds')::interval)`,
+    [monitorId, checkerId, isUp, durationMs, ageSeconds],
   );
 }
 
@@ -181,5 +182,84 @@ describe('evaluateConsensus', () => {
       await holder.query('ROLLBACK');
       holder.release();
     }
+  });
+});
+
+describe('evaluateConsensus EWMA', () => {
+  async function seedUpConsensus(m: { id: string }, durationMs: number): Promise<void> {
+    await seedHeartbeats(['checker-eu', 'checker-ap', 'checker-us']);
+    await seedResult(m.id, 'checker-eu', true, 30, durationMs);
+    await seedResult(m.id, 'checker-ap', true, 30, durationMs);
+    await seedResult(m.id, 'checker-us', true, 30, durationMs);
+  }
+
+  test('cold start sets ewma_sample_count to 1 on first up result', async () => {
+    const m = await monitors.createMonitor(testMonitor);
+    await seedUpConsensus(m, 100);
+
+    await evaluateConsensus(m.id);
+
+    const fetched = await monitors.getMonitor(m.id, testMonitor.userId);
+    expect(fetched?.ewmaSampleCount).toBe(1);
+    expect(fetched?.ewmaDurationMs).toBe(100);
+    expect(await anomalyEvents.countAnomalyEvents(m.id)).toBe(0);
+  });
+
+  test('null median skips ewma update when consensus is down', async () => {
+    const m = await monitors.createMonitor(testMonitor);
+    await seedUpConsensus(m, 100);
+    await evaluateConsensus(m.id);
+
+    await query(
+      `UPDATE monitors SET ewma_duration_ms = 100, ewma_variance = 25, ewma_sample_count = 50 WHERE id = $1`,
+      [m.id],
+    );
+
+    await seedHeartbeats(['checker-eu', 'checker-ap', 'checker-us']);
+    await seedResult(m.id, 'checker-eu', false, 30, 100);
+    await seedResult(m.id, 'checker-ap', false, 30, 100);
+    await seedResult(m.id, 'checker-us', false, 30, 100);
+
+    await evaluateConsensus(m.id);
+
+    const fetched = await monitors.getMonitor(m.id, testMonitor.userId);
+    expect(fetched?.ewmaSampleCount).toBe(50);
+    expect(fetched?.ewmaDurationMs).toBe(100);
+    expect(await anomalyEvents.countAnomalyEvents(m.id)).toBe(0);
+  });
+
+  test('step change inserts an anomaly_events row with pre-reading baseline', async () => {
+    const m = await monitors.createMonitor(testMonitor);
+    await query(
+      `UPDATE monitors SET ewma_duration_ms = 100, ewma_variance = 25, ewma_sample_count = 50 WHERE id = $1`,
+      [m.id],
+    );
+
+    await seedUpConsensus(m, 400);
+
+    const result = await evaluateConsensus(m.id);
+
+    expect(result?.anomaly?.direction).toBe('slower');
+    expect(result?.anomaly?.zScore).toBeGreaterThan(3);
+    expect(result?.anomaly?.baselineEwma).toBeCloseTo(100, 0);
+
+    const events = await anomalyEvents.getRecentAnomalies(m.id, 1);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.direction).toBe('slower');
+    expect(events[0]?.baselineEwma).toBeCloseTo(100, 0);
+  });
+
+  test('anomaly does not change monitors.status', async () => {
+    const m = await monitors.createMonitor(testMonitor);
+    await query(
+      `UPDATE monitors SET ewma_duration_ms = 100, ewma_variance = 25, ewma_sample_count = 50 WHERE id = $1`,
+      [m.id],
+    );
+    await seedUpConsensus(m, 400);
+
+    await evaluateConsensus(m.id);
+
+    const fetched = await monitors.getMonitor(m.id, testMonitor.userId);
+    expect(fetched?.status).toBe('up');
   });
 });

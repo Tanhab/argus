@@ -13,23 +13,47 @@ import type { AlertJob } from './enqueue.js';
 export async function registerAlertWorker(boss: PgBoss, log: FastifyBaseLogger): Promise<void> {
   await boss.work<AlertJob>(ALERTS_QUEUE, async (jobs) => {
     for (const job of jobs) {
-      const { reason, monitorUrl, n } = job.data;
-      if (reason === 'down_declared') {
+      const d = job.data;
+
+      if (d.kind === 'anomaly') {
         await sendNtfy(
-          `DOWN: ${monitorUrl}`,
-          `state machine declared down (${n} checkers)`,
-          'high',
-          ['rotating_light'],
+          `SLOW: ${d.monitorUrl}`,
+          `responding ${d.direction} than baseline — ${Math.round(d.durationMs)}ms vs ~${Math.round(d.baselineEwma)}ms (z=${d.zScore.toFixed(1)})`,
+          d.direction === 'slower' ? 'high' : 'default',
+          ['turtle'],
         );
-      } else {
-        await sendNtfy(
-          `RECOVERED: ${monitorUrl}`,
-          `state machine declared recovered (${n} checkers)`,
-          'default',
-          ['white_check_mark'],
+        log.info(
+          { jobId: job.id, kind: d.kind, monitorUrl: d.monitorUrl, zScore: d.zScore },
+          'anomaly alert delivered',
         );
+        continue;
       }
-      log.info({ jobId: job.id, reason, monitorUrl }, 'alert delivered');
+
+      if ('reason' in d) {
+        const { reason, monitorUrl, n } = d;
+        if (reason === 'down_declared') {
+          await sendNtfy(
+            `DOWN: ${monitorUrl}`,
+            `state machine declared down (${n} checkers)`,
+            'high',
+            ['rotating_light'],
+          );
+        } else {
+          await sendNtfy(
+            `RECOVERED: ${monitorUrl}`,
+            `state machine declared recovered (${n} checkers)`,
+            'default',
+            ['white_check_mark'],
+          );
+        }
+        log.info(
+          { jobId: job.id, kind: 'kind' in d ? d.kind : 'transition', reason, monitorUrl },
+          'alert delivered',
+        );
+        continue;
+      }
+
+      log.warn({ jobId: job.id }, 'unknown alert job kind, skipping');
     }
   });
 }
