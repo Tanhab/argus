@@ -14,6 +14,7 @@ I'm building it phase by phase. Each phase tries to do one thing. Whenever I fac
 | [Phase 3 - Windowed Consensus](#phase-3--windowed-consensus) | 2-of-3 majority voting over a 90s window, advisory-lock serialised evaluation, alerts on consensus transitions |
 | [Phase 4 - State Machine with Flap Suppression](#phase-4--state-machine-with-flap-suppression) | Four-state machine with time-based thresholds, append-only `status_events`, pg-boss alert queue, alerts on state transitions |
 | [Phase 5 - EWMA Latency Anomaly Detection](#phase-5--ewma-latency-anomaly-detection) | Online EWMA baseline + z-score, `anomaly_events` log, slow-response alerts via existing pg-boss queue |
+| [Phase 6 - SLA, SLO, and Error Budget](#phase-6--sla-slo-and-error-budget) | Uptime from the FSM audit log, maintenance windows and coverage gaps excluded, optional SLO error budget |
 
 ## Architecture
 
@@ -99,6 +100,22 @@ Two honest readings from the live data:
 
 - **The 3σ rule is twitchy on a tight baseline.** Before injection, with σ as small as ~3.9, a 14ms jitter (163→177ms) crossed z=3 and fired a SLOW alert. A fixed multiplier over-fires when the variance is genuinely small.
 - **A sustained slowdown self-quiets.** The first slow reading screamed (z=21.1), but each subsequent slow reading folded into the EWMA - the baseline climbed 163→187→223ms and σ blew out 7.5→62→110, so z fell to 3.9 then 3.2 within three cycles. The detector is loud on the *onset* of a step change and progressively deaf to it once the baseline chases the new level. By bench end the EWMA sat at ~179ms, drifting back toward steady state.
+
+### Phase 6 — SLA from the FSM audit log
+
+The SLA endpoint reads, it doesn't measure new traffic, so the bench replays a window with known ground truth: the Phase 4 sustained-outage run (72 declared outages over ~67 minutes), turned into an uptime number from the same `status_events`.
+
+Window: `2026-06-07T03:31:13Z` → `04:37:57Z` (~66.7 min).
+
+| Metric | Value |
+|--------|-------|
+| Incidents (FSM `down` periods) | 72 |
+| Downtime | 21.38 min |
+| Coverage gaps excluded | 0.49 min (<1%) |
+| Uptime | 67.73% |
+| `lowConfidence` | false |
+
+The 72 incidents match the 72 DOWN alerts Phase 4 recorded over the same run - the timeline reconstructs the outages from the transition log alone, counting only `down` time. Scheduling a maintenance window over one outage drops its downtime to zero and moves those minutes into `maintenanceMinutes`. Adding `slo=99.9` shows the ~4s budget for a 66-minute window burned many times over by ~21 minutes of downtime; `slo=50` flips `met` to true.
 
 ---
 
@@ -275,3 +292,31 @@ A running record of decisions I made each phase. Entries stay as-written when la
 - Anomaly never changes `monitors.status` - two independent layers
 - Alert delivery is best-effort post-commit; `anomaly_events` is authoritative for what fired
 - `anomaly_events` partitions roll over manually - same as `status_events`
+
+### Phase 6 - SLA, SLO, and Error Budget
+
+**Focus:** Turn the `status_events` transition log into uptime numbers. A read-only `GET /v1/monitors/:id/sla` endpoint that counts FSM `down` time, excludes scheduled maintenance and monitoring coverage gaps, and optionally reports an SLO error budget. No new measurement - just arithmetic over data Phases 3-5 already produce.
+
+**What's in place:**
+
+- `@argus/sla` package - pure interval arithmetic (merge, subtract, clip, sum) and timeline reconstruction (`buildDownIntervals`, `getStatusAtTime`, `detectCoverageGaps`), no I/O, unit-tested in isolation
+- `GET /v1/monitors/:id/sla?from=&to=&slo=` - an SLI block (total / monitored / downtime minutes, uptime %), an incident list, and an optional SLO / error-budget block
+- `maintenance_windows` table with POST/GET/DELETE routes to schedule planned work that does not count against uptime
+- Partition-aware read path on `status_events` (`getStatusEventsInRange`, `getLastTransitionBefore`) - every read is time-bounded so Postgres can prune partitions
+- Coverage-gap detection off `checker_heartbeats`: fewer than two checkers reporting within a 2-minute staleness window is an excluded gap
+- Integration tests on real Postgres covering the happy path, maintenance and coverage exclusion, window clipping, low-confidence, and both SLO outcomes
+
+**Key decisions and tricky bugs:**
+
+- Downtime is FSM `down` only. `degraded` and `recovering` are deliberately not downtime - the user was never declared down, or the recovery is not yet confirmed. Pinned in unit tests so a later refactor can't quietly fold them in.
+- Intervals are half-open `[start, end)` throughout. On closed intervals merge and subtract double-count the shared boundary; half-open lets adjacent intervals compose cleanly and the minute sums add up.
+- Maintenance and coverage gaps are merged into one exclusion set *before* subtracting from downtime, not subtracted separately - overlapping exclusions would otherwise remove the same minute twice and over-credit uptime.
+- The window is clipped to the monitor's lifetime (`max(from, createdAt)` / `min(to, deactivatedAt ?? to)`), and both effective bounds are echoed back so a clipped window is visible rather than silent.
+
+**Limitations of this phase:**
+
+- The coverage-gap exclusion is a perverse incentive - worse monitoring coverage shrinks the denominator and can inflate uptime. Mitigated by reporting `coverageGapMinutes` separately and flagging `lowConfidence` past 5% of the window, not by rejecting the number.
+- A window that is entirely maintenance or coverage gap has zero monitored minutes, so `uptimePercent` reports 0, not "no data" - the caller must read `monitoredMinutes` to tell the two apart.
+- Coverage gaps are system-wide, not per-monitor, and there is no per-checker SLA - downtime can't be attributed to a region.
+- Reconstructing status before the first event in range assumes `up`; a monitor still in `pending` at window start is the documented edge.
+- `status_events` and `checker_heartbeats` partitions roll over manually - an SLA query over a range with no partition fails, same as the other partitioned tables.
