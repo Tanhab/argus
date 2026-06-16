@@ -9,6 +9,7 @@ import { registerAlertWorker } from './notifier/worker.js';
 import { internalRoutes } from './routes/internal/index.js';
 import { maintenanceRoutes } from './routes/maintenance.js';
 import { monitorsRoutes } from './routes/monitors.js';
+import { slaRoutes } from './routes/sla.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -70,5 +71,6 @@ export async function buildApp() {
   await app.register(monitorsRoutes, { prefix: '/v1' });
   await app.register(maintenanceRoutes, { prefix: '/v1' });
   await app.register(internalRoutes, { prefix: '/internal' });
+  await app.register(slaRoutes, { prefix: '/v1' });
   return app;
 }
