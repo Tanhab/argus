@@ -37,7 +37,9 @@ export function buildCheckerOnlineIntervals(
   }
   if (startBeat && lastBeat)
     ret.push({ start: startBeat, end: new Date(lastBeat.getTime() + CHECKER_STALE_MS) });
-  return ret.map((r) => clipInterval(r, windowFrom, windowTo)).filter((r) => r !== null);
+  return ret
+    .map((r) => clipInterval(r, windowFrom, windowTo))
+    .filter((r): r is Interval => r !== null);
 }
 
 export function detectCoverageGaps(
