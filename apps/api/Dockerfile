@@ -9,6 +9,7 @@ COPY apps/api/package.json apps/api/
 COPY apps/checker/package.json apps/checker/
 COPY packages/db/package.json packages/db/
 COPY packages/logger/package.json packages/logger/
+COPY packages/sla/package.json packages/sla/
 
 # Install all deps (including dev) for the whole workspace
 RUN npm ci
@@ -18,9 +19,10 @@ COPY tsconfig.base.json ./
 COPY apps/api apps/api
 COPY packages/db packages/db
 COPY packages/logger packages/logger
+COPY packages/sla packages/sla
 
 # Build the api and its workspace deps
-RUN npm run build -w @argus/logger -w @argus/db -w @argus/api
+RUN npm run build -w @argus/logger -w @argus/db -w @argus/sla -w @argus/api
 
 # Prune dev deps so the runtime stage gets a clean node_modules
 RUN npm prune --omit=dev
@@ -38,6 +40,8 @@ COPY --from=builder /repo/packages/db/dist ./packages/db/dist
 COPY --from=builder /repo/packages/db/package.json ./packages/db/
 COPY --from=builder /repo/packages/logger/dist ./packages/logger/dist
 COPY --from=builder /repo/packages/logger/package.json ./packages/logger/
+COPY --from=builder /repo/packages/sla/dist ./packages/sla/dist
+COPY --from=builder /repo/packages/sla/package.json ./packages/sla/
 COPY --from=builder /repo/package.json ./
 
 # Drop privileges
