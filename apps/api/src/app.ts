@@ -7,6 +7,7 @@ import { ArgusError } from './errors.js';
 import { startBoss, stopBoss } from './notifier/boss.js';
 import { registerAlertWorker } from './notifier/worker.js';
 import { internalRoutes } from './routes/internal/index.js';
+import { maintenanceRoutes } from './routes/maintenance.js';
 import { monitorsRoutes } from './routes/monitors.js';
 
 declare module 'fastify' {
@@ -67,6 +68,7 @@ export async function buildApp() {
   });
 
   await app.register(monitorsRoutes, { prefix: '/v1' });
+  await app.register(maintenanceRoutes, { prefix: '/v1' });
   await app.register(internalRoutes, { prefix: '/internal' });
   return app;
 }

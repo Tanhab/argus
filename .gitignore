@@ -9,4 +9,5 @@ misc/
 !.vscode/settings.json
 !.vscode/extensions.json
 .claude/
+.cursor/
 CLAUDE.md
