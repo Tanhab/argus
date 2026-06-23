@@ -8,6 +8,7 @@ import { registerMaintenanceJobs } from './maintenance/register-jobs.js';
 import { startBoss, stopBoss } from './notifier/boss.js';
 import { startOutboxPoller } from './notifier/outbox-worker.js';
 import { registerAlertWorker } from './notifier/worker.js';
+import { isRateLimitProblem, rateLimitPlugin } from './rate-limit.js';
 import { internalRoutes } from './routes/internal/index.js';
 import { maintenanceRoutes } from './routes/maintenance.js';
 import { monitorsRoutes } from './routes/monitors.js';
@@ -40,6 +41,10 @@ export async function buildApp() {
   });
 
   app.setErrorHandler((err: FastifyError, req, reply) => {
+    if (isRateLimitProblem(err)) {
+      return reply.status(err.status).send(err);
+    }
+
     const status = err.statusCode ?? 500;
     const isKnown = err instanceof ArgusError;
 
@@ -57,6 +62,8 @@ export async function buildApp() {
       requestId: req.id,
     });
   });
+
+  await app.register(rateLimitPlugin);
 
   app.get('/health', async () => ({
     status: 'ok',
