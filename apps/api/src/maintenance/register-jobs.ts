@@ -2,8 +2,8 @@ import { maintenanceJobs } from '@argus/db';
 import type { FastifyBaseLogger } from 'fastify';
 import type { PgBoss } from 'pg-boss';
 
-export const PARTITION_ROLLOVER_QUEUE = 'maintenance:partition-rollover';
-export const DEMO_CLEANUP_QUEUE = 'maintenance:demo-cleanup';
+export const PARTITION_ROLLOVER_QUEUE = 'maintenance-partition-rollover';
+export const DEMO_CLEANUP_QUEUE = 'maintenance-demo-cleanup';
 
 export async function registerMaintenanceJobs(boss: PgBoss, log: FastifyBaseLogger): Promise<void> {
   await boss.createQueue(PARTITION_ROLLOVER_QUEUE);
