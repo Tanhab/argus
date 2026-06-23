@@ -184,11 +184,15 @@ describe('internal routes — results', () => {
       url: 'https://example.com',
       intervalSeconds: 60,
     });
-    // Warm baseline ~100ms (seeded — the warm-up gate is what we are not testing here).
-    await query(
-      `UPDATE monitors SET ewma_duration_ms = 100, ewma_variance = 25, ewma_sample_count = 50 WHERE id = $1`,
-      [m.id],
-    );
+    // Warm per-checker baselines ~100ms (seeded — the warm-up gate is what we are not testing here).
+    for (const id of ['checker-eu', 'checker-ap', 'checker-us']) {
+      await query(
+        `INSERT INTO monitor_checker_ewma
+           (monitor_id, checker_id, ewma_duration_ms, ewma_variance, ewma_sample_count)
+         VALUES ($1, $2, 100, 25, 50)`,
+        [m.id, id],
+      );
+    }
     // Two other checkers + all three heartbeats so the route POST is the third up vote and
     // consensus resolves to `up` with a non-null median (the EWMA input contract).
     for (const id of ['checker-eu', 'checker-ap', 'checker-us']) {
@@ -221,6 +225,7 @@ describe('internal routes — results', () => {
     const events = await anomalyEvents.getRecentAnomalies(m.id, 1);
     expect(events).toHaveLength(1);
     expect(events[0]?.direction).toBe('slower');
+    expect(events[0]?.scope).toBe('service');
     expect(events[0]?.zScore).toBeGreaterThan(3);
     expect(events[0]?.baselineEwma).toBeCloseTo(100, 0);
 
