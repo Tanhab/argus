@@ -4,7 +4,6 @@ import Fastify, { type FastifyError } from 'fastify';
 import type { PgBoss } from 'pg-boss';
 import { config } from './config.js';
 import { ArgusError } from './errors.js';
-import { registerMaintenanceJobs } from './maintenance/register-jobs.js';
 import { startBoss, stopBoss } from './notifier/boss.js';
 import { startOutboxPoller } from './notifier/outbox-worker.js';
 import { registerAlertWorker } from './notifier/worker.js';
@@ -32,7 +31,6 @@ export async function buildApp() {
   const boss = await startBoss(process.env.DATABASE_URL ?? config.databaseUrl);
   app.decorate('boss', boss);
   await registerAlertWorker(boss, app.log);
-  await registerMaintenanceJobs(boss, app.log);
   const stopOutboxPoller = startOutboxPoller(app.log);
   app.addHook('onClose', async () => {
     stopOutboxPoller();
