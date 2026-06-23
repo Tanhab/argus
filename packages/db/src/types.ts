@@ -25,6 +25,7 @@ export interface Monitor {
 }
 
 export type AnomalyDirection = 'slower' | 'faster';
+export type AnomalyScope = 'service' | 'regional';
 
 export interface NewAnomalyEvent {
   monitorId: string;
@@ -33,11 +34,23 @@ export interface NewAnomalyEvent {
   durationMs: number;
   baselineEwma: number;
   baselineStdDev: number;
+  checkerId?: string | null;
+  scope?: AnomalyScope;
 }
 
 export interface AnomalyEvent extends NewAnomalyEvent {
   id: number;
   occurredAt: Date;
+  checkerId: string | null;
+  scope: AnomalyScope;
+}
+
+export interface CheckerEwmaState {
+  monitorId: string;
+  checkerId: string;
+  ewmaDurationMs: number | null;
+  ewmaVariance: number | null;
+  ewmaSampleCount: number;
 }
 
 export type ErrorType =
