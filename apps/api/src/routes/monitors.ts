@@ -2,6 +2,7 @@ import { monitors, results } from '@argus/db';
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 import { NotFoundError } from '../errors.js';
+import { assertPublicHttpUrl } from '../security/url-guard.js';
 
 const monitorResponseSchema = {
   type: 'object',
@@ -37,9 +38,12 @@ export async function monitorsRoutes(app: FastifyInstance) {
     },
     async (req, reply) => {
       const body = req.body as { url: string; intervalSeconds?: number };
+      const url = assertPublicHttpUrl(body.url);
+      const storedUrl = url.pathname === '/' && !url.search && !url.hash ? url.origin : url.href;
+
       const monitor = await monitors.createMonitor({
         userId: config.monitorUserId,
-        url: body.url,
+        url: storedUrl,
         intervalSeconds: body.intervalSeconds ?? 60,
       });
       reply.status(201);

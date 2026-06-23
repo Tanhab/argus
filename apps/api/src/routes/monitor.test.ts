@@ -83,4 +83,13 @@ describe('monitors routes', () => {
     const res = await app.inject({ method: 'DELETE', url: `/v1/monitors/${id}` });
     expect(res.statusCode).toBe(204);
   });
+
+  test('POST /v1/monitors returns 400 for private url', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/monitors',
+      payload: { url: 'http://127.0.0.1' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
 });
