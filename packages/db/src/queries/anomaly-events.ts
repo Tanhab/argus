@@ -1,6 +1,6 @@
 import type { PoolClient } from 'pg';
 import { query } from '../pool.js';
-import type { AnomalyDirection, AnomalyEvent, NewAnomalyEvent } from '../types.js';
+import type { AnomalyDirection, AnomalyEvent, AnomalyScope, NewAnomalyEvent } from '../types.js';
 
 interface AnomalyEventRow {
   id: number;
@@ -10,6 +10,8 @@ interface AnomalyEventRow {
   duration_ms: number;
   baseline_ewma: number;
   baseline_std_dev: number;
+  checker_id: string | null;
+  scope: string;
   occurred_at: Date;
 }
 
@@ -22,6 +24,8 @@ function toAnomalyEvent(r: AnomalyEventRow): AnomalyEvent {
     durationMs: r.duration_ms,
     baselineEwma: r.baseline_ewma,
     baselineStdDev: r.baseline_std_dev,
+    checkerId: r.checker_id,
+    scope: r.scope as AnomalyScope,
     occurredAt: r.occurred_at,
   };
 }
@@ -29,9 +33,18 @@ function toAnomalyEvent(r: AnomalyEventRow): AnomalyEvent {
 export async function insertAnomalyEvent(tx: PoolClient, e: NewAnomalyEvent): Promise<void> {
   await tx.query(
     `INSERT INTO anomaly_events
-       (monitor_id, direction, z_score, duration_ms, baseline_ewma, baseline_std_dev)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [e.monitorId, e.direction, e.zScore, e.durationMs, e.baselineEwma, e.baselineStdDev],
+       (monitor_id, direction, z_score, duration_ms, baseline_ewma, baseline_std_dev, checker_id, scope)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      e.monitorId,
+      e.direction,
+      e.zScore,
+      e.durationMs,
+      e.baselineEwma,
+      e.baselineStdDev,
+      e.checkerId ?? null,
+      e.scope ?? 'service',
+    ],
   );
 }
 

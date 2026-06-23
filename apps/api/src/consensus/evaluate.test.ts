@@ -28,7 +28,9 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await query('TRUNCATE monitors, check_results, checker_heartbeats, anomaly_events CASCADE');
+  await query(
+    'TRUNCATE monitors, check_results, checker_heartbeats, anomaly_events, monitor_checker_ewma CASCADE',
+  );
 });
 
 const testMonitor = {
@@ -57,6 +59,23 @@ async function seedResult(
      VALUES ($1, $2, $3, $4, NOW() - ($5 || ' seconds')::interval)`,
     [monitorId, checkerId, isUp, durationMs, ageSeconds],
   );
+}
+
+async function seedCheckerEwma(
+  monitorId: string,
+  checkerIds: string[],
+  ewmaDurationMs = 100,
+  ewmaVariance = 25,
+  ewmaSampleCount = 50,
+): Promise<void> {
+  for (const checkerId of checkerIds) {
+    await query(
+      `INSERT INTO monitor_checker_ewma
+         (monitor_id, checker_id, ewma_duration_ms, ewma_variance, ewma_sample_count)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [monitorId, checkerId, ewmaDurationMs, ewmaVariance, ewmaSampleCount],
+    );
+  }
 }
 
 describe('evaluateConsensus', () => {
@@ -228,12 +247,9 @@ describe('evaluateConsensus EWMA', () => {
     expect(await anomalyEvents.countAnomalyEvents(m.id)).toBe(0);
   });
 
-  test('step change inserts an anomaly_events row with pre-reading baseline', async () => {
+  test('step change inserts a service-wide anomaly_events row with pre-reading baseline', async () => {
     const m = await monitors.createMonitor(testMonitor);
-    await query(
-      `UPDATE monitors SET ewma_duration_ms = 100, ewma_variance = 25, ewma_sample_count = 50 WHERE id = $1`,
-      [m.id],
-    );
+    await seedCheckerEwma(m.id, ['checker-eu', 'checker-ap', 'checker-us']);
 
     await seedUpConsensus(m, 400);
 
@@ -246,15 +262,34 @@ describe('evaluateConsensus EWMA', () => {
     const events = await anomalyEvents.getRecentAnomalies(m.id, 1);
     expect(events).toHaveLength(1);
     expect(events[0]?.direction).toBe('slower');
+    expect(events[0]?.scope).toBe('service');
+    expect(events[0]?.checkerId).toBeNull();
     expect(events[0]?.baselineEwma).toBeCloseTo(100, 0);
+  });
+
+  test('one slow checker records regional anomaly without paging outcome', async () => {
+    const m = await monitors.createMonitor(testMonitor);
+    await seedCheckerEwma(m.id, ['checker-eu', 'checker-ap', 'checker-us']);
+
+    await seedHeartbeats(['checker-eu', 'checker-ap', 'checker-us']);
+    await seedResult(m.id, 'checker-eu', true, 30, 400);
+    await seedResult(m.id, 'checker-ap', true, 30, 100);
+    await seedResult(m.id, 'checker-us', true, 30, 100);
+
+    const result = await evaluateConsensus(m.id);
+
+    expect(result?.anomaly).toBeNull();
+
+    const events = await anomalyEvents.getRecentAnomalies(m.id, 1);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.scope).toBe('regional');
+    expect(events[0]?.checkerId).toBe('checker-eu');
+    expect(events[0]?.direction).toBe('slower');
   });
 
   test('anomaly does not change monitors.status', async () => {
     const m = await monitors.createMonitor(testMonitor);
-    await query(
-      `UPDATE monitors SET ewma_duration_ms = 100, ewma_variance = 25, ewma_sample_count = 50 WHERE id = $1`,
-      [m.id],
-    );
+    await seedCheckerEwma(m.id, ['checker-eu', 'checker-ap', 'checker-us']);
     await seedUpConsensus(m, 400);
 
     await evaluateConsensus(m.id);
