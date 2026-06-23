@@ -88,8 +88,8 @@ describe('maintenance jobs', () => {
 
     await cleanupExpiredDemo();
 
-    const monitors = await query<{ id: string }>('SELECT id FROM monitors ORDER BY id');
-    expect(monitors.map((r) => r.id)).toEqual([liveMonitor.id, realMonitor.id]);
+    const monitors = await query<{ id: string }>('SELECT id FROM monitors');
+    expect(monitors.map((r) => r.id).sort()).toEqual([liveMonitor.id, realMonitor.id].sort());
 
     const keys = await query<{ owner: string }>('SELECT owner FROM api_keys ORDER BY owner');
     expect(keys.map((r) => r.owner)).toEqual(['demo:live']);
