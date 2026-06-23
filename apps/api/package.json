@@ -16,6 +16,7 @@
     "@argus/db": "^0.0.0",
     "@argus/logger": "^0.0.0",
     "@argus/sla": "^0.0.0",
+    "@fastify/rate-limit": "^11.0.0",
     "fastify": "^5.8.5",
     "pg-boss": "^12.18.2"
   },

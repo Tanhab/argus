@@ -92,4 +92,24 @@ describe('monitors routes', () => {
     });
     expect(res.statusCode).toBe(400);
   });
+  test('POST /v1/monitors returns 429 when rate limit exceeded', async () => {
+    let blocked: Awaited<ReturnType<typeof app.inject>> | undefined;
+    for (let i = 0; i < 20; i++) {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/v1/monitors',
+        payload: { url: `https://rate-limit-${i}.example.com` },
+      });
+      if (res.statusCode === 429) {
+        blocked = res;
+        break;
+      }
+      expect(res.statusCode).toBe(201);
+    }
+
+    expect(blocked).toBeDefined();
+    expect(blocked?.statusCode).toBe(429);
+    expect(blocked?.json().status).toBe(429);
+    expect(blocked?.json().requestId).toBeDefined();
+  });
 });

@@ -23,6 +23,12 @@ export async function monitorsRoutes(app: FastifyInstance) {
   app.post(
     '/monitors',
     {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: '1 minute',
+        },
+      },
       schema: {
         body: {
           type: 'object',
