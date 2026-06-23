@@ -53,6 +53,22 @@ export interface CheckerEwmaState {
   ewmaSampleCount: number;
 }
 
+export type AlertOutboxKind = 'transition' | 'anomaly';
+
+export interface NewAlertOutboxRow {
+  monitorId: string;
+  kind: AlertOutboxKind;
+  payload: Record<string, unknown>;
+}
+
+export interface AlertOutboxRow extends NewAlertOutboxRow {
+  id: number;
+  createdAt: Date;
+  sentAt: Date | null;
+  attempts: number;
+  lastError: string | null;
+}
+
 export type ErrorType =
   | 'timeout'
   | 'dns_failure'

@@ -5,6 +5,7 @@ import type { PgBoss } from 'pg-boss';
 import { config } from './config.js';
 import { ArgusError } from './errors.js';
 import { startBoss, stopBoss } from './notifier/boss.js';
+import { startOutboxPoller } from './notifier/outbox-worker.js';
 import { registerAlertWorker } from './notifier/worker.js';
 import { internalRoutes } from './routes/internal/index.js';
 import { maintenanceRoutes } from './routes/maintenance.js';
@@ -30,7 +31,9 @@ export async function buildApp() {
   const boss = await startBoss(process.env.DATABASE_URL ?? config.databaseUrl);
   app.decorate('boss', boss);
   await registerAlertWorker(boss, app.log);
+  const stopOutboxPoller = startOutboxPoller(app.log);
   app.addHook('onClose', async () => {
+    stopOutboxPoller();
     await stopBoss(boss);
   });
 

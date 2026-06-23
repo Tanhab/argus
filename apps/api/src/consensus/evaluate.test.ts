@@ -29,7 +29,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await query(
-    'TRUNCATE monitors, check_results, checker_heartbeats, anomaly_events, monitor_checker_ewma CASCADE',
+    'TRUNCATE monitors, check_results, checker_heartbeats, anomaly_events, monitor_checker_ewma, alert_outbox CASCADE',
   );
 });
 
@@ -265,6 +265,14 @@ describe('evaluateConsensus EWMA', () => {
     expect(events[0]?.scope).toBe('service');
     expect(events[0]?.checkerId).toBeNull();
     expect(events[0]?.baselineEwma).toBeCloseTo(100, 0);
+
+    const outbox = await query<{ kind: string; sent_at: Date | null }>(
+      'SELECT kind, sent_at FROM alert_outbox WHERE monitor_id = $1',
+      [m.id],
+    );
+    expect(outbox).toHaveLength(1);
+    expect(outbox[0]?.kind).toBe('anomaly');
+    expect(outbox[0]?.sent_at).toBeNull();
   });
 
   test('one slow checker records regional anomaly without paging outcome', async () => {
@@ -285,6 +293,12 @@ describe('evaluateConsensus EWMA', () => {
     expect(events[0]?.scope).toBe('regional');
     expect(events[0]?.checkerId).toBe('checker-eu');
     expect(events[0]?.direction).toBe('slower');
+
+    const outbox = await query<{ count: string }>(
+      'SELECT COUNT(*)::text AS count FROM alert_outbox WHERE monitor_id = $1',
+      [m.id],
+    );
+    expect(outbox[0]?.count).toBe('0');
   });
 
   test('anomaly does not change monitors.status', async () => {
