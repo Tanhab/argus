@@ -6,6 +6,7 @@ export type { WindowResult } from './queries/consensus.js';
 export * as consensus from './queries/consensus.js';
 export * as heartbeats from './queries/heartbeats.js';
 export * as maintenanceWindows from './queries/maintenance-windows.js';
+export * as monitorCheckerEwma from './queries/monitor-checker-ewma.js';
 export * as monitors from './queries/monitors.js';
 export * as results from './queries/results.js';
 export * as statusEvents from './queries/status-events.js';
