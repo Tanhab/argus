@@ -1,4 +1,5 @@
 import {
+  alertOutbox,
   anomalyEvents,
   type CheckerEwmaState,
   consensus,
@@ -69,6 +70,20 @@ export async function evaluateConsensus(monitorId: string): Promise<ConsensusRes
     }
 
     const transition = await applyStateTransition(tx, monitor, outcome);
+    const occurredAt = new Date().toISOString();
+
+    if (transition.alertReason) {
+      await alertOutbox.insertAlertOutbox(tx, {
+        monitorId,
+        kind: 'transition',
+        payload: {
+          monitorUrl: monitor.url,
+          reason: transition.alertReason,
+          occurredAt,
+          n: outcome.n,
+        },
+      });
+    }
 
     // Display aggregate on monitors — not used for anomaly detection.
     if (outcome.medianDurationMs !== null) {
@@ -127,6 +142,20 @@ export async function evaluateConsensus(monitorId: string): Promise<ConsensusRes
             checkerId: null,
           });
           anomaly = toAnomalyOutcome(hit, baselineByChecker.get(hit.checkerId));
+          if (anomaly) {
+            await alertOutbox.insertAlertOutbox(tx, {
+              monitorId,
+              kind: 'anomaly',
+              payload: {
+                monitorUrl: monitor.url,
+                direction: anomaly.direction,
+                zScore: anomaly.zScore,
+                durationMs: anomaly.durationMs,
+                baselineEwma: anomaly.baselineEwma,
+                occurredAt,
+              },
+            });
+          }
         }
       }
 
