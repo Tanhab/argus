@@ -34,6 +34,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  log.error({ err }, 'checker failed to start');
+  log.error({ err }, 'checker has failed to start');
   process.exit(1);
 });
