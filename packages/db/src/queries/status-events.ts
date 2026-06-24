@@ -52,6 +52,21 @@ export async function getStatusEventsInRange(
   return rows.map(toStatusEvent);
 }
 
+export async function getRecentStatusEvents(
+  monitorId: string,
+  limit: number,
+): Promise<StatusEvent[]> {
+  const rows = await query<StatusEventRow>(
+    `SELECT * FROM status_events
+     WHERE monitor_id = $1
+     ORDER BY occurred_at DESC, id DESC
+     LIMIT $2`,
+    [monitorId, limit],
+  );
+
+  return rows.map(toStatusEvent);
+}
+
 export async function getLastTransitionBefore(
   monitorId: string,
   at: Date,

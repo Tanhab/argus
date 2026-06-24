@@ -115,6 +115,18 @@ jobs:
         env:
           DATABASE_URL: postgres://argus:argus_dev@localhost:5432/argus
 
+      - name: Seed showcase monitor for smoke
+        run: |
+          PGPASSWORD=argus_dev psql -h localhost -U argus -d argus -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO monitors (id, user_id, url, interval_seconds)
+          VALUES (
+            'd7ff842a-3a68-44e2-9f85-e9bb377b390f',
+            'ci-user',
+            'https://example.com/',
+            60
+          );
+          SQL
+
       - name: Run API container
         run: |
           docker run -d \
@@ -124,7 +136,7 @@ jobs:
             -e NODE_ENV=production \
             -e MONITOR_USER_ID=ci-user \
             -e NTFY_TOPIC_URL=https://ntfy.sh/ci-placeholder \
-            -e PUBLIC_SHOWCASE_MONITOR_IDS=1a881f8a-14d2-45a5-88b6-e7e98de03662,d7ff842a-3a68-44e2-9f85-e9bb377b390f \
+            -e PUBLIC_SHOWCASE_MONITOR_IDS=d7ff842a-3a68-44e2-9f85-e9bb377b390f \
             argus-api:smoke
 
       - name: Wait for API
@@ -142,6 +154,8 @@ jobs:
           curl -fs http://localhost:3000/ready
           curl -fs http://localhost:3000/docs/json | grep -q '"/v1/monitors"'
           curl -fs http://localhost:3000/v1/public/monitors
+          curl -fs "http://localhost:3000/v1/public/monitors/d7ff842a-3a68-44e2-9f85-e9bb377b390f/latency?window=1h"
+          curl -fsI http://localhost:3000/demo/ | grep -qi '200\|301\|302'
 
       - name: Show logs
         if: always()

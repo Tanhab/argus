@@ -1,7 +1,24 @@
 import type { PoolClient } from 'pg';
+import { query } from '../pool.js';
 import type { AlertOutboxKind, AlertOutboxRow, NewAlertOutboxRow } from '../types.js';
 
 export const MAX_OUTBOX_ATTEMPTS = 10;
+
+export interface DeliveredAlert {
+  id: number;
+  monitorId: string;
+  kind: AlertOutboxKind;
+  createdAt: Date;
+  sentAt: Date;
+}
+
+interface DeliveredAlertRowDb {
+  id: number;
+  monitor_id: string;
+  kind: string;
+  created_at: Date;
+  sent_at: Date;
+}
 
 interface AlertOutboxRowDb {
   id: number;
@@ -12,6 +29,16 @@ interface AlertOutboxRowDb {
   sent_at: Date | null;
   attempts: number;
   last_error: string | null;
+}
+
+function toDeliveredAlert(r: DeliveredAlertRowDb): DeliveredAlert {
+  return {
+    id: r.id,
+    monitorId: r.monitor_id,
+    kind: r.kind as AlertOutboxKind,
+    createdAt: r.created_at,
+    sentAt: r.sent_at,
+  };
 }
 
 function toAlertOutboxRow(r: AlertOutboxRowDb): AlertOutboxRow {
@@ -59,4 +86,20 @@ export async function markOutboxFailed(tx: PoolClient, id: number, error: string
      WHERE id = $1`,
     [id, error],
   );
+}
+
+export async function getRecentDeliveredAlerts(
+  monitorId: string,
+  limit: number,
+): Promise<DeliveredAlert[]> {
+  const rows = await query<DeliveredAlertRowDb>(
+    `SELECT id, monitor_id, kind, created_at, sent_at
+     FROM alert_outbox
+     WHERE monitor_id = $1 AND sent_at IS NOT NULL
+     ORDER BY sent_at DESC, id DESC
+     LIMIT $2`,
+    [monitorId, limit],
+  );
+
+  return rows.map(toDeliveredAlert);
 }

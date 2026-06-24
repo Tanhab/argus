@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+/* Dark scrollbars for nested panes (activity log, SLA incidents, etc.) */
+.scroll-pane {
+  scrollbar-color: rgb(51 65 85) rgb(2 6 23);
+  scrollbar-width: thin;
+}
+
+.scroll-pane::-webkit-scrollbar {
+  width: 8px;
+}
+
+.scroll-pane::-webkit-scrollbar-track {
+  background: rgb(2 6 23);
+}
+
+.scroll-pane::-webkit-scrollbar-thumb {
+  background: rgb(51 65 85);
+  border-radius: 4px;
+}
+
+.scroll-pane::-webkit-scrollbar-thumb:hover {
+  background: rgb(71 85 105);
+}
