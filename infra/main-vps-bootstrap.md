@@ -60,9 +60,69 @@ curl -sS --max-time 5 http://46.62.208.192:3000/health
 Existing connections survive `ufw enable`/route changes; checker heartbeats keep
 flowing without restarting the checker containers.
 
-## TLS
+## Public TLS (Caddy)
 
-Currently HTTP. The API key crosses the three known point-to-point links
-between the Hetzner main VPS and the DigitalOcean checker droplets, not the
-open internet — but it is not encrypted in transit. Adding Caddy + Let's Encrypt
-is blocked on owning a domain. Tracked as the next thing to fix when that lands.
+Recruiter-facing traffic uses **HTTPS on `argus.tanhab.com`**. Checkers keep
+using **HTTP on `:3000`** with the allowlist above — do not remove those rules.
+
+### DNS (Namecheap)
+
+| Type | Host | Value |
+|------|------|-------|
+| A | `argus` | `46.62.208.192` |
+
+Verify before first deploy:
+
+```bash
+nslookup argus.tanhab.com 8.8.8.8
+# expect: 46.62.208.192
+```
+
+### Firewall — open 80/443 for Let's Encrypt and browsers
+
+```bash
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw status
+```
+
+Port 3000 stays scoped to the three checker IPs only.
+
+### Compose
+
+`infra/docker-compose.prod.yml` runs **Caddy** alongside the API:
+
+- `infra/Caddyfile` — `argus.tanhab.com` → `reverse_proxy api:3000`
+- Caddy publishes **80** and **443**; API still publishes **3000** for checkers
+- Cert storage: `caddy-data` / `caddy-config` volumes (survive redeploys)
+
+Deploy copies `infra/Caddyfile` via GitHub Actions. After merge, `docker compose
+-f infra/docker-compose.prod.yml up -d` starts or recreates the `caddy` service.
+
+First boot: Caddy requests a Let's Encrypt cert via HTTP-01 on port 80. DNS must
+resolve and port 80 must be reachable from the internet.
+
+### Verify
+
+From any host (not checker-only):
+
+```bash
+curl -sS https://argus.tanhab.com/health
+# expect: {"status":"ok",...}
+
+curl -sS https://argus.tanhab.com/v1/public/monitors
+# expect: JSON with allowlisted showcase monitor ids
+```
+
+Checker path unchanged:
+
+```bash
+curl -sS --max-time 5 http://46.62.208.192:3000/health
+# from a checker droplet: ok
+# from a laptop: connection timed out (expected)
+```
+
+### Demo cookie
+
+With `NODE_ENV=production` behind HTTPS, the demo token cookie is set with
+`Secure: true`. Local dev on `http://localhost` keeps `Secure: false`.

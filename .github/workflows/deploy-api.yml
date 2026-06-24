@@ -9,6 +9,7 @@ on:
       - 'packages/logger/**'
       - 'migrations/**'
       - 'infra/docker-compose.prod.yml'
+      - 'infra/Caddyfile'
       - '.github/workflows/deploy-api.yml'
 
 permissions:
@@ -65,7 +66,7 @@ jobs:
           host: ${{ secrets.MAIN_VPS_HOST }}
           username: argus
           key: ${{ secrets.DO_SSH_KEY }}
-          source: "infra/docker-compose.prod.yml,migrations,package.json,package-lock.json"
+          source: "infra/docker-compose.prod.yml,infra/Caddyfile,migrations,package.json,package-lock.json"
           target: /opt/argus/
           strip_components: 0
 
