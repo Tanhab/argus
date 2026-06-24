@@ -1,0 +1,6 @@
+series,alpha,cycles_to_detection,first_z_score,false_positives_pre_inject
+synthetic,0.05,0,58.47335815333335,0
+synthetic,0.1,0,57.04261081309664,0
+synthetic,0.15,0,55.57465635116107,0
+synthetic,0.2,0,54.099988104085995,0
+synthetic,0.3,0,51.14999999392371,0

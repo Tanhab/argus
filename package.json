@@ -33,6 +33,7 @@
     "dotenv": "^17.4.2",
     "husky": "^9.1.7",
     "node-pg-migrate": "^8.0.4",
+    "tsx": "^4.22.4",
     "typescript": "^6.0.3"
   }
 }

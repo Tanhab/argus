@@ -1,0 +1,6 @@
+series,alpha,cycles_to_detection,first_z_score,false_positives_pre_inject
+phase5-style,0.05,0,70.10978915858831,1
+phase5-style,0.1,0,59.97101006368905,2
+phase5-style,0.15,0,59.66953364474302,2
+phase5-style,0.2,0,63.53262246150774,1
+phase5-style,0.3,0,80.863941399298,1
