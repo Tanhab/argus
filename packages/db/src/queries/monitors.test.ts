@@ -2,7 +2,14 @@ import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { query, resetPool } from '../pool.js';
-import { createMonitor, deactivateMonitor, getMonitor, listMonitors } from './monitors.js';
+import {
+  createMonitor,
+  deactivateMonitor,
+  getMonitor,
+  getMonitorById,
+  getMonitorsByIds,
+  listMonitors,
+} from './monitors.js';
 
 const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 
@@ -86,5 +93,19 @@ describe('monitors queries', () => {
   test('deactivateMonitor returns false for a non-existent id', async () => {
     const result = await deactivateMonitor('does-not-exist', testMonitor1.userId);
     expect(result).toBe(false);
+  });
+
+  test('getMonitorById returns a row without user filter', async () => {
+    const created = await createMonitor(testMonitor1);
+    const fetched = await getMonitorById(created.id);
+    expect(fetched?.id).toBe(created.id);
+  });
+
+  test('getMonitorsByIds returns only matching monitors', async () => {
+    const a = await createMonitor(testMonitor1);
+    const b = await createMonitor(testMonitor2);
+    const rows = await getMonitorsByIds([a.id, b.id]);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((m) => m.id).sort()).toEqual([a.id, b.id].sort());
   });
 });

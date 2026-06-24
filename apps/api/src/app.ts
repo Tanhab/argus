@@ -16,6 +16,7 @@ import { demoRoutes } from './routes/demo.js';
 import { internalRoutes } from './routes/internal/index.js';
 import { maintenanceRoutes } from './routes/maintenance.js';
 import { monitorsRoutes } from './routes/monitors.js';
+import { publicRoutes } from './routes/public.js';
 import { slaRoutes } from './routes/sla.js';
 
 declare module 'fastify' {
@@ -84,6 +85,7 @@ export async function buildApp() {
         { name: 'sla', description: 'Uptime and SLA reporting' },
         { name: 'maintenance', description: 'Maintenance window scheduling' },
         { name: 'demo', description: 'Self-service demo token (cookie auth)' },
+        { name: 'public', description: 'Read-only showcase monitors (allowlisted ids)' },
         { name: 'internal', description: 'Checker-only endpoints — not for public use' },
       ],
     },
@@ -143,6 +145,7 @@ export async function buildApp() {
   });
 
   await app.register(demoRoutes, { prefix: '/v1' });
+  await app.register(publicRoutes, { prefix: '/v1' });
   await app.register(monitorsRoutes, { prefix: '/v1' });
   await app.register(maintenanceRoutes, { prefix: '/v1' });
   await app.register(internalRoutes, { prefix: '/internal' });

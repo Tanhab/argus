@@ -44,6 +44,7 @@ describe('OpenAPI /docs', () => {
     expect(spec.paths['/v1/monitors']?.post?.tags).toContain('monitors');
     expect(spec.paths['/v1/monitors']?.post?.summary).toBeTruthy();
     expect(spec.paths['/v1/demo/token']?.post?.tags).toContain('demo');
+    expect(spec.paths['/v1/public/monitors']?.get?.tags).toContain('public');
     expect(spec.paths['/internal/results']?.post?.tags).toContain('internal');
   });
 });
