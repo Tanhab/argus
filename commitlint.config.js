@@ -5,7 +5,7 @@ export default {
     'scope-enum': [
       2,
       'always',
-      ['api', 'checker', 'db', 'logger', 'sla', 'infra', 'docs', 'repo', 'bench'],
+      ['api', 'checker', 'db', 'logger', 'sla', 'infra', 'docs', 'repo', 'bench', 'demo'],
     ],
     'subject-case': [2, 'always', 'lower-case'],
     'subject-max-length': [2, 'always', 72],

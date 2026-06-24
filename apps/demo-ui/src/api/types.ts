@@ -14,3 +14,14 @@ export interface PublicMonitor {
   status: MonitorStatus;
   statusChangedAt: string | null;
 }
+
+export type LatencyWindow = '1h' | '24h';
+
+export interface BucketedLatencyPoint {
+  bucket: string;
+  checkerId: string;
+  avgMs: number | null;
+  p95Ms: number | null;
+  downCount: number;
+  total: number;
+}

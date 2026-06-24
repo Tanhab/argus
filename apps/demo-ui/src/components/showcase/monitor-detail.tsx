@@ -1,6 +1,7 @@
 import type { PublicMonitor } from '../../api/types';
 import { monitorLabel, shortUrl } from '../../lib/monitor-label';
 import { StatusBadge } from '../status-badge';
+import { LatencyChart } from './latency-chart';
 
 interface MonitorDetailProps {
   monitor: PublicMonitor;
@@ -67,12 +68,7 @@ export function MonitorDetail({ monitor }: MonitorDetailProps) {
       </header>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <PlaceholderSection
-          className="lg:col-span-2"
-          tall
-          title="Per-region latency"
-          hint="uPlot — EU / AP / US with 1h / 24h toggle"
-        />
+        <LatencyChart monitorId={monitor.id} className="lg:col-span-2" />
         <PlaceholderSection
           title="Consensus vs votes"
           hint="2-of-3 rule — each region's latest vote"
