@@ -9,6 +9,8 @@ export default defineConfig({
       MONITOR_USER_ID: 'test-user',
       NTFY_TOPIC_URL: 'https://ntfy.sh/test',
       CHECKER_ID: 'local',
+      PUBLIC_SHOWCASE_MONITOR_IDS:
+        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa,bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
     },
     hookTimeout: 60_000,
     testTimeout: 30_000,

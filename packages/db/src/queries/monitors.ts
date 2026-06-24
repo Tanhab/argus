@@ -86,6 +86,20 @@ export async function getMonitor(id: string, userId: string): Promise<Monitor | 
   return rows[0] ? toMonitor(rows[0]) : null;
 }
 
+export async function getMonitorById(id: string): Promise<Monitor | null> {
+  const rows = await query<MonitorRow>('SELECT * FROM monitors WHERE id = $1', [id]);
+  return rows[0] ? toMonitor(rows[0]) : null;
+}
+
+export async function getMonitorsByIds(ids: string[]): Promise<Monitor[]> {
+  if (ids.length === 0) return [];
+  const rows = await query<MonitorRow>(
+    'SELECT * FROM monitors WHERE id = ANY($1::text[]) ORDER BY created_at DESC',
+    [ids],
+  );
+  return rows.map(toMonitor);
+}
+
 export async function getActiveMonitors(): Promise<Monitor[]> {
   const rows = await query<MonitorRow>(
     'SELECT * FROM monitors where is_active = true ORDER BY created_at DESC',

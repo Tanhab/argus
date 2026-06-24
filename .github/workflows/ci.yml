@@ -124,6 +124,7 @@ jobs:
             -e NODE_ENV=production \
             -e MONITOR_USER_ID=ci-user \
             -e NTFY_TOPIC_URL=https://ntfy.sh/ci-placeholder \
+            -e PUBLIC_SHOWCASE_MONITOR_IDS=1a881f8a-14d2-45a5-88b6-e7e98de03662,d7ff842a-3a68-44e2-9f85-e9bb377b390f \
             argus-api:smoke
 
       - name: Wait for API
@@ -140,6 +141,7 @@ jobs:
           curl -fs http://localhost:3000/health
           curl -fs http://localhost:3000/ready
           curl -fs http://localhost:3000/docs/json | grep -q '"/v1/monitors"'
+          curl -fs http://localhost:3000/v1/public/monitors
 
       - name: Show logs
         if: always()
