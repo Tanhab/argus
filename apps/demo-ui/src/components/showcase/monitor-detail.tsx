@@ -1,6 +1,7 @@
 import type { PublicMonitor } from '../../api/types';
 import { monitorLabel, shortUrl } from '../../lib/monitor-label';
 import { StatusBadge } from '../status-badge';
+import { ConsensusPanel } from './consensus-panel';
 import { LatencyChart } from './latency-chart';
 
 interface MonitorDetailProps {
@@ -69,9 +70,10 @@ export function MonitorDetail({ monitor }: MonitorDetailProps) {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <LatencyChart monitorId={monitor.id} className="lg:col-span-2" />
-        <PlaceholderSection
-          title="Consensus vs votes"
-          hint="2-of-3 rule — each region's latest vote"
+        <ConsensusPanel
+          monitorId={monitor.id}
+          verdict={monitor.lastConsensus}
+          verdictAt={monitor.lastConsensusAt}
         />
       </div>
 

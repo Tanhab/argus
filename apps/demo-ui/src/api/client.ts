@@ -1,4 +1,4 @@
-import type { BucketedLatencyPoint, LatencyWindow, PublicMonitor } from './types';
+import type { BucketedLatencyPoint, CheckResult, LatencyWindow, PublicMonitor } from './types';
 
 async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(path);
@@ -17,4 +17,8 @@ export function getPublicLatency(
   window: LatencyWindow,
 ): Promise<BucketedLatencyPoint[]> {
   return apiGet(`/v1/public/monitors/${monitorId}/latency?window=${window}`);
+}
+
+export function getPublicResults(monitorId: string, limit = 30): Promise<CheckResult[]> {
+  return apiGet(`/v1/public/monitors/${monitorId}/results?limit=${limit}`);
 }

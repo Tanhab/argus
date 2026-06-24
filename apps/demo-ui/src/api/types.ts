@@ -25,3 +25,14 @@ export interface BucketedLatencyPoint {
   downCount: number;
   total: number;
 }
+
+export interface CheckResult {
+  id: number;
+  monitorId: string;
+  checkerId: string;
+  statusCode: number | null;
+  durationMs: number | null;
+  isUp: boolean;
+  errorType: string | null;
+  checkedAt: string;
+}

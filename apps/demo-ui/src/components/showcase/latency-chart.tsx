@@ -6,7 +6,7 @@ import type { LatencyWindow } from '../../api/types';
 import { CHECKER_ORDER, checkerLabel } from '../../lib/checker-labels';
 import { bucketedLatencyToUplot } from '../../lib/latency-series';
 
-const POLL_MS = 12_000;
+import { POLL_MS } from '../../lib/poll-interval';
 
 const SERIES_COLORS = ['#34d399', '#38bdf8', '#fbbf24'] as const;
 
