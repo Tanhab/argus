@@ -139,6 +139,7 @@ jobs:
         run: |
           curl -fs http://localhost:3000/health
           curl -fs http://localhost:3000/ready
+          curl -fs http://localhost:3000/docs/json | grep -q '"/v1/monitors"'
 
       - name: Show logs
         if: always()

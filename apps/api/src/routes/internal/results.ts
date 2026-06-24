@@ -39,7 +39,16 @@ interface ResultBody {
 export async function resultsRoute(app: FastifyInstance) {
   app.post(
     '/results',
-    { schema: { body: bodySchema }, preHandler: requireCheckerAuth },
+    {
+      schema: {
+        tags: ['internal'],
+        summary: 'Submit a check result',
+        description: 'Checker API key required. Triggers consensus evaluation. Not for public use.',
+        body: bodySchema,
+        response: { 202: { type: 'null', description: 'Result accepted' } },
+      },
+      preHandler: requireCheckerAuth,
+    },
     async (req, reply) => {
       const b = req.body as ResultBody;
       const checker = req.checker;

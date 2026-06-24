@@ -30,6 +30,7 @@ const plugin: FastifyPluginAsync = async (app) => {
     allowList: (req) =>
       req.url.startsWith('/health') ||
       req.url.startsWith('/ready') ||
+      req.url.startsWith('/docs') ||
       req.url.startsWith('/internal'),
     errorResponseBuilder: (req, context) => ({
       type: 'https://argus.local/errors/rate_limit',
