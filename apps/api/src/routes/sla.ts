@@ -1,9 +1,11 @@
 import type { FastifyInstance } from 'fastify';
-import { config } from '../config.js';
+import { attachMonitorUser, requireMonitorUser } from '../auth/resolve-user.js';
 import { NotFoundError, ValidationError } from '../errors.js';
 import { computeSla } from '../sla/compute.js';
 
 export async function slaRoutes(app: FastifyInstance) {
+  app.addHook('preHandler', attachMonitorUser);
+
   app.get(
     '/monitors/:id/sla',
     {
@@ -32,7 +34,13 @@ export async function slaRoutes(app: FastifyInstance) {
         if (slo <= 0 || slo >= 100) throw new ValidationError('Invalid slo score');
       }
 
-      const result = await computeSla(monitorId, config.monitorUserId, fromDate, toDate, slo);
+      const result = await computeSla(
+        monitorId,
+        requireMonitorUser(req).userId,
+        fromDate,
+        toDate,
+        slo,
+      );
       if (!result) throw new NotFoundError(`monitor ${monitorId} not found`);
       return result;
     },

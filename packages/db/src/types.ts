@@ -112,4 +112,5 @@ export interface ApiKey {
   isActive: boolean;
   createdAt: Date;
   revokedAt: Date | null;
+  expiresAt: Date | null;
 }

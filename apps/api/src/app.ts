@@ -1,5 +1,6 @@
 import { ping } from '@argus/db';
 import { createLogger } from '@argus/logger';
+import cookie from '@fastify/cookie';
 import Fastify, { type FastifyError } from 'fastify';
 import type { PgBoss } from 'pg-boss';
 import { config } from './config.js';
@@ -9,6 +10,7 @@ import { startBoss, stopBoss } from './notifier/boss.js';
 import { startOutboxPoller } from './notifier/outbox-worker.js';
 import { registerAlertWorker } from './notifier/worker.js';
 import { isRateLimitProblem, rateLimitPlugin } from './rate-limit.js';
+import { demoRoutes } from './routes/demo.js';
 import { internalRoutes } from './routes/internal/index.js';
 import { maintenanceRoutes } from './routes/maintenance.js';
 import { monitorsRoutes } from './routes/monitors.js';
@@ -63,6 +65,7 @@ export async function buildApp() {
     });
   });
 
+  await app.register(cookie);
   await app.register(rateLimitPlugin);
 
   app.get('/health', async () => ({
@@ -80,6 +83,7 @@ export async function buildApp() {
     return { status: 'ready', db: true };
   });
 
+  await app.register(demoRoutes, { prefix: '/v1' });
   await app.register(monitorsRoutes, { prefix: '/v1' });
   await app.register(maintenanceRoutes, { prefix: '/v1' });
   await app.register(internalRoutes, { prefix: '/internal' });

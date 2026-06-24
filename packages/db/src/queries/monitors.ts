@@ -69,6 +69,15 @@ export async function listMonitors(userId: string): Promise<Monitor[]> {
   return rows.map(toMonitor);
 }
 
+export async function countActiveMonitors(userId: string): Promise<number> {
+  const rows = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM monitors
+     WHERE user_id = $1 AND is_active = true`,
+    [userId],
+  );
+  return Number(rows[0]?.count ?? 0);
+}
+
 export async function getMonitor(id: string, userId: string): Promise<Monitor | null> {
   const rows = await query<MonitorRow>('SELECT * FROM monitors WHERE id = $1 AND user_id = $2 ', [
     id,

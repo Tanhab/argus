@@ -1,7 +1,8 @@
 import { monitors, results } from '@argus/db';
 import type { FastifyInstance } from 'fastify';
+import { attachMonitorUser, requireMonitorUser } from '../auth/resolve-user.js';
 import { config } from '../config.js';
-import { NotFoundError } from '../errors.js';
+import { ConflictError, NotFoundError } from '../errors.js';
 import { assertPublicHttpUrl } from '../security/url-guard.js';
 
 const monitorResponseSchema = {
@@ -20,6 +21,8 @@ const monitorResponseSchema = {
 } as const;
 
 export async function monitorsRoutes(app: FastifyInstance) {
+  app.addHook('preHandler', attachMonitorUser);
+
   app.post(
     '/monitors',
     {
@@ -43,12 +46,22 @@ export async function monitorsRoutes(app: FastifyInstance) {
       },
     },
     async (req, reply) => {
+      const { userId, isDemo } = requireMonitorUser(req);
       const body = req.body as { url: string; intervalSeconds?: number };
+
+      if (isDemo) {
+        const quota = Number(process.env.DEMO_MONITOR_QUOTA ?? config.demoMonitorQuota);
+        const count = await monitors.countActiveMonitors(userId);
+        if (count >= quota) {
+          throw new ConflictError('demo accounts are limited to 3 monitors');
+        }
+      }
+
       const url = assertPublicHttpUrl(body.url);
       const storedUrl = url.pathname === '/' && !url.search && !url.hash ? url.origin : url.href;
 
       const monitor = await monitors.createMonitor({
-        userId: config.monitorUserId,
+        userId,
         url: storedUrl,
         intervalSeconds: body.intervalSeconds ?? 60,
       });
@@ -60,17 +73,19 @@ export async function monitorsRoutes(app: FastifyInstance) {
   app.get(
     '/monitors',
     { schema: { response: { 200: { type: 'array', items: monitorResponseSchema } } } },
-    async () => {
-      const allMonitors = await monitors.listMonitors(config.monitorUserId);
-      return allMonitors;
+    async (req) => {
+      const { userId } = requireMonitorUser(req);
+      return monitors.listMonitors(userId);
     },
   );
+
   app.get(
     '/monitors/:id',
     { schema: { response: { 200: monitorResponseSchema } } },
     async (req) => {
+      const { userId } = requireMonitorUser(req);
       const { id } = req.params as { id: string };
-      const monitor = await monitors.getMonitor(id, config.monitorUserId);
+      const monitor = await monitors.getMonitor(id, userId);
       if (!monitor) throw new NotFoundError(`monitor ${id} not found`);
       return monitor;
     },
@@ -89,19 +104,20 @@ export async function monitorsRoutes(app: FastifyInstance) {
       },
     },
     async (req) => {
+      const { userId } = requireMonitorUser(req);
       const { id } = req.params as { id: string };
       const { limit } = req.query as { limit: number };
-      const monitor = await monitors.getMonitor(id, config.monitorUserId);
+      const monitor = await monitors.getMonitor(id, userId);
       if (!monitor) throw new NotFoundError(`monitor ${id} not found`);
 
-      const res = await results.getRecentResults(id, limit);
-      return res;
+      return results.getRecentResults(id, limit);
     },
   );
 
   app.delete('/monitors/:id', async (req, reply) => {
+    const { userId } = requireMonitorUser(req);
     const { id } = req.params as { id: string };
-    const isDeleted = await monitors.deactivateMonitor(id, config.monitorUserId);
+    const isDeleted = await monitors.deactivateMonitor(id, userId);
     if (!isDeleted) throw new NotFoundError(`monitor ${id} not found`);
     reply.status(204).send();
   });
