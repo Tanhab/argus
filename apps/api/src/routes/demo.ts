@@ -54,6 +54,7 @@ export async function demoRoutes(app: FastifyInstance) {
 
       reply.setCookie(config.demoCookieName, rawKey, {
         httpOnly: true,
+        secure: config.demoCookieSecure,
         sameSite: 'lax',
         path: '/',
         maxAge: config.demoTokenTtlHours * 3_600,

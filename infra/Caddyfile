@@ -1,0 +1,3 @@
+argus.tanhab.com {
+    reverse_proxy api:3000
+}

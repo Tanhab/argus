@@ -23,5 +23,6 @@ export const config = {
   demoMaxActiveTokens: Number(process.env.DEMO_MAX_ACTIVE_TOKENS ?? 50),
   demoMonitorQuota: Number(process.env.DEMO_MONITOR_QUOTA ?? 3),
   demoCookieName: 'argus_demo',
+  demoCookieSecure: (process.env.NODE_ENV ?? 'development') === 'production',
   publicShowcaseMonitorIds: parseShowcaseMonitorIds(requireEnv('PUBLIC_SHOWCASE_MONITOR_IDS')),
 };
