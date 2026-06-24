@@ -1,6 +1,8 @@
 import { ping } from '@argus/db';
 import { createLogger } from '@argus/logger';
 import cookie from '@fastify/cookie';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
 import Fastify, { type FastifyError } from 'fastify';
 import type { PgBoss } from 'pg-boss';
 import { config } from './config.js';
@@ -68,19 +70,76 @@ export async function buildApp() {
   await app.register(cookie);
   await app.register(rateLimitPlugin);
 
-  app.get('/health', async () => ({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-  }));
+  await app.register(swagger, {
+    openapi: {
+      openapi: '3.0.3',
+      info: {
+        title: 'Argus API',
+        description: 'Distributed service monitor API',
+        version: '1.0.0',
+      },
+      tags: [
+        { name: 'health', description: 'Liveness and readiness probes' },
+        { name: 'monitors', description: 'Monitor CRUD and check results' },
+        { name: 'sla', description: 'Uptime and SLA reporting' },
+        { name: 'maintenance', description: 'Maintenance window scheduling' },
+        { name: 'demo', description: 'Self-service demo token (cookie auth)' },
+        { name: 'internal', description: 'Checker-only endpoints — not for public use' },
+      ],
+    },
+  });
 
-  app.get('/ready', async (req, reply) => {
-    const ok = await ping();
-    if (!ok) {
-      req.log.warn('database ping failed');
-      reply.status(503);
-      return { status: 'not_ready', db: false };
-    }
-    return { status: 'ready', db: true };
+  app.get('/health', {
+    schema: {
+      tags: ['health'],
+      summary: 'Liveness probe',
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            status: { type: 'string' },
+            timestamp: { type: 'string', format: 'date-time' },
+          },
+        },
+      },
+    },
+    handler: async () => ({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+    }),
+  });
+
+  app.get('/ready', {
+    schema: {
+      tags: ['health'],
+      summary: 'Readiness probe',
+      description: 'Returns 503 when the database is unreachable.',
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            status: { type: 'string' },
+            db: { type: 'boolean' },
+          },
+        },
+        503: {
+          type: 'object',
+          properties: {
+            status: { type: 'string' },
+            db: { type: 'boolean' },
+          },
+        },
+      },
+    },
+    handler: async (req, reply) => {
+      const ok = await ping();
+      if (!ok) {
+        req.log.warn('database ping failed');
+        reply.status(503);
+        return { status: 'not_ready', db: false };
+      }
+      return { status: 'ready', db: true };
+    },
   });
 
   await app.register(demoRoutes, { prefix: '/v1' });
@@ -88,5 +147,14 @@ export async function buildApp() {
   await app.register(maintenanceRoutes, { prefix: '/v1' });
   await app.register(internalRoutes, { prefix: '/internal' });
   await app.register(slaRoutes, { prefix: '/v1' });
+
+  await app.register(swaggerUi, {
+    routePrefix: '/docs',
+    uiConfig: {
+      docExpansion: 'list',
+      withCredentials: true,
+    },
+  });
+
   return app;
 }

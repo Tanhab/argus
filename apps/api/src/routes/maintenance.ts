@@ -2,6 +2,7 @@ import { maintenanceWindows, monitors } from '@argus/db';
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 import { NotFoundError, ValidationError } from '../errors.js';
+import { monitorIdParams } from '../openapi/common-schemas.js';
 
 const maintenanceWindowResponseSchema = {
   type: 'object',
@@ -15,6 +16,15 @@ const maintenanceWindowResponseSchema = {
   },
 } as const;
 
+const maintenanceWindowIdParams = {
+  type: 'object',
+  required: ['id', 'windowId'],
+  properties: {
+    id: { type: 'string', description: 'Monitor id' },
+    windowId: { type: 'string', description: 'Maintenance window id' },
+  },
+} as const;
+
 async function requireMonitor(monitorId: string): Promise<void> {
   const monitor = await monitors.getMonitor(monitorId, config.monitorUserId);
   if (!monitor) throw new NotFoundError(`monitor ${monitorId} not found`);
@@ -25,6 +35,10 @@ export async function maintenanceRoutes(app: FastifyInstance) {
     '/monitors/:id/maintenance',
     {
       schema: {
+        tags: ['maintenance'],
+        summary: 'Schedule a maintenance window',
+        description: 'Excluded from SLA uptime calculations for the monitor.',
+        params: monitorIdParams,
         body: {
           type: 'object',
           required: ['startsAt', 'endsAt'],
@@ -66,6 +80,9 @@ export async function maintenanceRoutes(app: FastifyInstance) {
     '/monitors/:id/maintenance',
     {
       schema: {
+        tags: ['maintenance'],
+        summary: 'List maintenance windows',
+        params: monitorIdParams,
         response: { 200: { type: 'array', items: maintenanceWindowResponseSchema } },
       },
     },
@@ -76,13 +93,24 @@ export async function maintenanceRoutes(app: FastifyInstance) {
     },
   );
 
-  app.delete('/monitors/:id/maintenance/:windowId', async (req, reply) => {
-    const { id: monitorId, windowId } = req.params as { id: string; windowId: string };
-    await requireMonitor(monitorId);
+  app.delete(
+    '/monitors/:id/maintenance/:windowId',
+    {
+      schema: {
+        tags: ['maintenance'],
+        summary: 'Delete a maintenance window',
+        params: maintenanceWindowIdParams,
+        response: { 204: { type: 'null', description: 'Window deleted' } },
+      },
+    },
+    async (req, reply) => {
+      const { id: monitorId, windowId } = req.params as { id: string; windowId: string };
+      await requireMonitor(monitorId);
 
-    const deleted = await maintenanceWindows.deleteMaintenanceWindow(windowId, monitorId);
-    if (!deleted) throw new NotFoundError(`maintenance window ${windowId} not found`);
+      const deleted = await maintenanceWindows.deleteMaintenanceWindow(windowId, monitorId);
+      if (!deleted) throw new NotFoundError(`maintenance window ${windowId} not found`);
 
-    reply.status(204).send();
-  });
+      reply.status(204).send();
+    },
+  );
 }

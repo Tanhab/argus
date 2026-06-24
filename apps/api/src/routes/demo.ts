@@ -16,12 +16,16 @@ export async function demoRoutes(app: FastifyInstance) {
         },
       },
       schema: {
+        tags: ['demo'],
+        summary: 'Mint a demo token',
+        description:
+          'Creates an expiring demo API key and sets an httpOnly cookie. IP-throttled; global active-token cap applies. Use withCredentials in Swagger UI.',
         response: {
           201: {
             type: 'object',
             required: ['key', 'expiresAt'],
             properties: {
-              key: { type: 'string' },
+              key: { type: 'string', description: 'Raw demo key (also stored in cookie)' },
               expiresAt: { type: 'string', format: 'date-time' },
             },
           },
