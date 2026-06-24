@@ -1,5 +1,12 @@
 import type { ConsensusVerdict, MonitorStatus } from '@argus/db';
-import { anomalyEvents, type Monitor, monitors, results } from '@argus/db';
+import {
+  alertOutbox,
+  anomalyEvents,
+  type Monitor,
+  monitors,
+  results,
+  statusEvents,
+} from '@argus/db';
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.js';
 import { NotFoundError, ValidationError } from '../errors.js';
@@ -66,6 +73,55 @@ const anomalySchema = {
     occurredAt: { type: 'string', format: 'date-time' },
   },
 } as const;
+
+const bucketedLatencySchema = {
+  type: 'object',
+  properties: {
+    bucket: { type: 'string', format: 'date-time' },
+    checkerId: { type: 'string' },
+    avgMs: { type: 'number', nullable: true },
+    p95Ms: { type: 'number', nullable: true },
+    downCount: { type: 'integer' },
+    total: { type: 'integer' },
+  },
+} as const;
+
+const statusEventSchema = {
+  type: 'object',
+  properties: {
+    id: { type: 'integer' },
+    monitorId: { type: 'string' },
+    fromStatus: { type: 'string' },
+    toStatus: { type: 'string' },
+    occurredAt: { type: 'string', format: 'date-time' },
+  },
+} as const;
+
+const deliveredAlertSchema = {
+  type: 'object',
+  properties: {
+    id: { type: 'integer' },
+    monitorId: { type: 'string' },
+    kind: { type: 'string' },
+    createdAt: { type: 'string', format: 'date-time' },
+    sentAt: { type: 'string', format: 'date-time' },
+  },
+} as const;
+
+type LatencyWindow = '1h' | '24h';
+
+function latencyWindowRange(window: LatencyWindow): {
+  bucketInterval: string;
+  from: Date;
+  to: Date;
+  origin: Date;
+} {
+  const to = new Date();
+  const spanMs = window === '1h' ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+  const from = new Date(to.getTime() - spanMs);
+  const bucketInterval = window === '1h' ? '30 seconds' : '5 minutes';
+  return { bucketInterval, from, to, origin: from };
+}
 
 function toPublicMonitor(m: Monitor): PublicMonitor {
   return {
@@ -174,6 +230,88 @@ export async function publicRoutes(app: FastifyInstance) {
       const monitor = await monitors.getMonitorById(id);
       if (!monitor) throw new NotFoundError(`monitor ${id} not found`);
       return anomalyEvents.getRecentAnomalies(id, limit);
+    },
+  );
+
+  app.get(
+    '/public/monitors/:id/latency',
+    {
+      schema: {
+        tags: ['public'],
+        summary: 'Bucketed per-checker latency for a showcase monitor',
+        params: monitorIdParams,
+        querystring: {
+          type: 'object',
+          required: ['window'],
+          additionalProperties: false,
+          properties: {
+            window: { type: 'string', enum: ['1h', '24h'] },
+          },
+        },
+        response: { 200: { type: 'array', items: bucketedLatencySchema } },
+      },
+    },
+    async (req) => {
+      const { id } = req.params as { id: string };
+      const { window } = req.query as { window: LatencyWindow };
+      assertShowcaseMonitor(id);
+      const monitor = await monitors.getMonitorById(id);
+      if (!monitor) throw new NotFoundError(`monitor ${id} not found`);
+
+      const { bucketInterval, from, to, origin } = latencyWindowRange(window);
+      return results.getBucketedResults(id, bucketInterval, from, to, origin);
+    },
+  );
+
+  app.get(
+    '/public/monitors/:id/transitions',
+    {
+      schema: {
+        tags: ['public'],
+        summary: 'Recent FSM transitions for a showcase monitor',
+        params: monitorIdParams,
+        querystring: {
+          type: 'object',
+          properties: {
+            limit: { type: 'integer', minimum: 1, maximum: 100, default: 50 },
+          },
+        },
+        response: { 200: { type: 'array', items: statusEventSchema } },
+      },
+    },
+    async (req) => {
+      const { id } = req.params as { id: string };
+      const { limit } = req.query as { limit: number };
+      assertShowcaseMonitor(id);
+      const monitor = await monitors.getMonitorById(id);
+      if (!monitor) throw new NotFoundError(`monitor ${id} not found`);
+      return statusEvents.getRecentStatusEvents(id, limit);
+    },
+  );
+
+  app.get(
+    '/public/monitors/:id/alerts',
+    {
+      schema: {
+        tags: ['public'],
+        summary: 'Recent delivered alerts for a showcase monitor',
+        params: monitorIdParams,
+        querystring: {
+          type: 'object',
+          properties: {
+            limit: { type: 'integer', minimum: 1, maximum: 100, default: 50 },
+          },
+        },
+        response: { 200: { type: 'array', items: deliveredAlertSchema } },
+      },
+    },
+    async (req) => {
+      const { id } = req.params as { id: string };
+      const { limit } = req.query as { limit: number };
+      assertShowcaseMonitor(id);
+      const monitor = await monitors.getMonitorById(id);
+      if (!monitor) throw new NotFoundError(`monitor ${id} not found`);
+      return alertOutbox.getRecentDeliveredAlerts(id, limit);
     },
   );
 

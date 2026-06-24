@@ -142,6 +142,7 @@ jobs:
           curl -fs http://localhost:3000/ready
           curl -fs http://localhost:3000/docs/json | grep -q '"/v1/monitors"'
           curl -fs http://localhost:3000/v1/public/monitors
+          curl -fs "http://localhost:3000/v1/public/monitors/1a881f8a-14d2-45a5-88b6-e7e98de03662/latency?window=1h"
 
       - name: Show logs
         if: always()

@@ -4,7 +4,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import { query, resetPool } from '../pool.js';
 import type { MonitorStatus } from '../types.js';
 import { createMonitor } from './monitors.js';
-import { getLastTransitionBefore, getStatusEventsInRange } from './status-events.js';
+import {
+  getLastTransitionBefore,
+  getRecentStatusEvents,
+  getStatusEventsInRange,
+} from './status-events.js';
 
 const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 
@@ -156,5 +160,45 @@ describe('status-events read queries', () => {
     expect(events).toHaveLength(2);
     expect(events[0]?.occurredAt).toEqual(endOfJune);
     expect(events[1]?.occurredAt).toEqual(startOfJuly);
+  });
+
+  test('getRecentStatusEvents returns newest transitions first, capped by limit', async () => {
+    const monitor = await seedMonitor();
+    const t1 = new Date('2026-06-10T10:00:00Z');
+    const t2 = new Date('2026-06-10T11:00:00Z');
+    const t3 = new Date('2026-06-10T12:00:00Z');
+
+    await insertEventAt(monitor.id, 'up', 'degraded', t1);
+    await insertEventAt(monitor.id, 'degraded', 'down', t2);
+    await insertEventAt(monitor.id, 'down', 'recovering', t3);
+
+    const events = await getRecentStatusEvents(monitor.id, 2);
+
+    expect(events).toHaveLength(2);
+    expect(events.map((e) => e.toStatus)).toEqual(['recovering', 'down']);
+    expect(events[0]?.occurredAt).toEqual(t3);
+    expect(events[1]?.occurredAt).toEqual(t2);
+  });
+
+  test('getRecentStatusEvents returns only events for the requested monitor', async () => {
+    const a = await seedMonitor();
+    const b = await seedMonitor();
+
+    await insertEventAt(a.id, 'up', 'degraded', new Date('2026-06-10T10:00:00Z'));
+    await insertEventAt(b.id, 'up', 'down', new Date('2026-06-10T11:00:00Z'));
+
+    const events = await getRecentStatusEvents(a.id, 10);
+
+    expect(events).toHaveLength(1);
+    expect(events[0]?.monitorId).toBe(a.id);
+    expect(events[0]?.toStatus).toBe('degraded');
+  });
+
+  test('getRecentStatusEvents returns empty array when monitor has no transitions', async () => {
+    const monitor = await seedMonitor();
+
+    const events = await getRecentStatusEvents(monitor.id, 10);
+
+    expect(events).toHaveLength(0);
   });
 });
