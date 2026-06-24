@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { MonitorDataScope } from '../../api/monitor-api';
 import {
-  getPublicAlerts,
-  getPublicAnomalies,
-  getPublicResults,
-  getPublicTransitions,
-} from '../../api/client';
+  getMonitorAlerts,
+  getMonitorAnomalies,
+  getMonitorResults,
+  getMonitorTransitions,
+} from '../../api/monitor-api';
 import type { ActivityEntry, ActivityKind } from '../../api/types';
 import { mergeActivityFeed } from '../../lib/activity-feed';
+import { activityEmptyHint, activityFilteredEmptyHint } from '../../lib/empty-state-copy';
 import { POLL_MS } from '../../lib/poll-interval';
 
 const KINDS: ActivityKind[] = ['CHECK', 'STATE', 'ANOMALY', 'ALERT'];
@@ -56,6 +58,8 @@ const KIND_STYLES: Record<ActivityKind, string> = {
 
 interface ActivityLogProps {
   monitorId: string;
+  scope?: MonitorDataScope;
+  intervalSeconds?: number;
   className?: string;
 }
 
@@ -73,7 +77,12 @@ function kindsEqual(a: Set<ActivityKind>, list: ActivityKind[]): boolean {
   return list.length === a.size && list.every((k) => a.has(k));
 }
 
-export function ActivityLog({ monitorId, className = '' }: ActivityLogProps) {
+export function ActivityLog({
+  monitorId,
+  scope = 'public',
+  intervalSeconds = 60,
+  className = '',
+}: ActivityLogProps) {
   const [entries, setEntries] = useState<ActivityEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -88,10 +97,10 @@ export function ActivityLog({ monitorId, className = '' }: ActivityLogProps) {
     async function load() {
       try {
         const [results, transitions, anomalies, alerts] = await Promise.all([
-          getPublicResults(monitorId, FETCH.checks),
-          getPublicTransitions(monitorId, FETCH.transitions),
-          getPublicAnomalies(monitorId, FETCH.anomalies),
-          getPublicAlerts(monitorId, FETCH.alerts),
+          getMonitorResults(scope, monitorId, FETCH.checks),
+          getMonitorTransitions(scope, monitorId, FETCH.transitions),
+          getMonitorAnomalies(scope, monitorId, FETCH.anomalies),
+          getMonitorAlerts(scope, monitorId, FETCH.alerts),
         ]);
         if (cancelled) return;
         setEntries(
@@ -118,7 +127,7 @@ export function ActivityLog({ monitorId, className = '' }: ActivityLogProps) {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [monitorId]);
+  }, [monitorId, scope]);
 
   const filtered = useMemo(() => entries.filter((e) => enabled.has(e.kind)), [entries, enabled]);
 
@@ -231,8 +240,10 @@ export function ActivityLog({ monitorId, className = '' }: ActivityLogProps) {
         )}
         {error && <p className="text-xs text-red-400">{error}</p>}
         {!loading && !error && visible.length === 0 && (
-          <p className="py-6 text-center text-xs text-slate-500">
-            {entries.length === 0 ? 'No activity yet' : 'No entries for selected filters'}
+          <p className="px-3 py-6 text-center text-xs leading-relaxed text-slate-500">
+            {entries.length === 0
+              ? activityEmptyHint(intervalSeconds)
+              : activityFilteredEmptyHint()}
           </p>
         )}
         <ul className="space-y-1.5">

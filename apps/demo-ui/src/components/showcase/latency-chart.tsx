@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
-import { getPublicLatency } from '../../api/client';
+import type { MonitorDataScope } from '../../api/monitor-api';
+import { getMonitorLatency } from '../../api/monitor-api';
 import type { LatencyWindow } from '../../api/types';
 import { CHECKER_ORDER, checkerLabel } from '../../lib/checker-labels';
+import { latencyEmptyHint } from '../../lib/empty-state-copy';
 import { bucketedLatencyToUplot } from '../../lib/latency-series';
 
 import { POLL_MS } from '../../lib/poll-interval';
@@ -12,10 +14,17 @@ const SERIES_COLORS = ['#34d399', '#38bdf8', '#fbbf24'] as const;
 
 interface LatencyChartProps {
   monitorId: string;
+  scope?: MonitorDataScope;
+  intervalSeconds?: number;
   className?: string;
 }
 
-export function LatencyChart({ monitorId, className = '' }: LatencyChartProps) {
+export function LatencyChart({
+  monitorId,
+  scope = 'public',
+  intervalSeconds = 60,
+  className = '',
+}: LatencyChartProps) {
   const [window, setWindow] = useState<LatencyWindow>('1h');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +39,7 @@ export function LatencyChart({ monitorId, className = '' }: LatencyChartProps) {
 
     async function load() {
       try {
-        const rows = await getPublicLatency(monitorId, window);
+        const rows = await getMonitorLatency(scope, monitorId, window);
         if (cancelled) return;
         setData(bucketedLatencyToUplot(rows));
         setError(null);
@@ -51,7 +60,7 @@ export function LatencyChart({ monitorId, className = '' }: LatencyChartProps) {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [monitorId, window]);
+  }, [monitorId, scope, window]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -149,10 +158,8 @@ export function LatencyChart({ monitorId, className = '' }: LatencyChartProps) {
           </p>
         )}
         {!loading && !error && data && data[0].length === 0 && (
-          <p className="absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-slate-500">
-            No checks in this window — the chart needs rows in{' '}
-            <code className="text-slate-400">check_results</code>. Local dev: seed data or run
-            checkers against this API.
+          <p className="absolute inset-0 flex items-center justify-center px-4 text-center text-xs leading-relaxed text-slate-500">
+            {latencyEmptyHint(intervalSeconds)}
           </p>
         )}
         <div ref={containerRef} className="uplot-dark w-full" />

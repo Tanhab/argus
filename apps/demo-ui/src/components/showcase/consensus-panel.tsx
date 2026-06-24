@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react';
-import { getPublicResults } from '../../api/client';
+import type { MonitorDataScope } from '../../api/monitor-api';
+import { getMonitorResults } from '../../api/monitor-api';
 import type { ConsensusVerdict } from '../../api/types';
 import { checkerLabel } from '../../lib/checker-labels';
 import { countUpVotes, latestResultPerChecker } from '../../lib/checker-votes';
+import { consensusEmptyHint } from '../../lib/empty-state-copy';
 import { POLL_MS } from '../../lib/poll-interval';
 
 interface ConsensusPanelProps {
   monitorId: string;
+  scope?: MonitorDataScope;
+  intervalSeconds?: number;
   verdict: ConsensusVerdict | null;
   verdictAt: string | null;
   className?: string;
@@ -18,6 +22,8 @@ function voteLabel(isUp: boolean): string {
 
 export function ConsensusPanel({
   monitorId,
+  scope = 'public',
+  intervalSeconds = 60,
   verdict,
   verdictAt,
   className = '',
@@ -32,7 +38,7 @@ export function ConsensusPanel({
 
     async function load() {
       try {
-        const rows = await getPublicResults(monitorId, 30);
+        const rows = await getMonitorResults(scope, monitorId, 30);
         if (cancelled) return;
         setVotes(latestResultPerChecker(rows));
         setError(null);
@@ -53,7 +59,7 @@ export function ConsensusPanel({
       cancelled = true;
       clearInterval(timer);
     };
-  }, [monitorId]);
+  }, [monitorId, scope]);
 
   const upCount = countUpVotes(votes);
   const total = votes.length;
@@ -97,7 +103,9 @@ export function ConsensusPanel({
         )}
         {error && <li className="text-xs text-red-400">{error}</li>}
         {!loading && !error && votes.length === 0 && (
-          <li className="text-xs text-slate-500">No checker results yet</li>
+          <li className="px-1 text-xs leading-relaxed text-slate-500">
+            {consensusEmptyHint(intervalSeconds)}
+          </li>
         )}
         {votes.map((row) => (
           <li

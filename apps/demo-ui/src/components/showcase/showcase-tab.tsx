@@ -77,11 +77,12 @@ export function ShowcaseTab({ onCreateMonitor }: ShowcaseTabProps) {
   if (monitors.length === 0) {
     return (
       <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200/90">
-        <p className="font-medium">No showcase monitors in the database.</p>
-        <p className="mt-2 text-xs text-amber-200/70">
-          The API allowlist is set, but those monitor ids are not in your local Postgres yet. Seed
-          the rows (same ids as PUBLIC_SHOWCASE_MONITOR_IDS) or point at a DB that has them — then
-          refresh.
+        <p className="font-medium">Showcase monitor not available.</p>
+        <p className="mt-2 text-xs leading-relaxed text-amber-200/70">
+          The live demo expects a configured showcase monitor on this VPS. If you just deployed,
+          confirm PUBLIC_SHOWCASE_MONITOR_IDS matches a row in Postgres and that EU, AP, and US
+          checkers are running — first charts usually appear within about 90 seconds of a healthy
+          deploy.
         </p>
       </div>
     );

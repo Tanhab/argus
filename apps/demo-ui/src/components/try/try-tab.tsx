@@ -6,11 +6,24 @@ import {
   hasDemoSession,
   listMyMonitors,
 } from '../../api/demo-client';
-import type { Monitor } from '../../api/types';
+import type { Monitor, MonitorView } from '../../api/types';
+import { activityEmptyHint } from '../../lib/empty-state-copy';
 import { shortUrl } from '../../lib/monitor-label';
+import { MonitorDetail } from '../showcase/monitor-detail';
 
 const DEMO_MONITOR_QUOTA = 3;
 const EXPIRES_KEY = 'argus_demo_expires_at';
+
+function toMonitorView(m: Monitor): MonitorView {
+  return {
+    id: m.id,
+    url: m.url,
+    intervalSeconds: m.intervalSeconds,
+    lastConsensus: m.lastConsensus,
+    lastConsensusAt: m.lastConsensusAt,
+    status: m.status,
+  };
+}
 
 function loadStoredExpiry(): string | null {
   try {
@@ -49,6 +62,7 @@ export function TryTab() {
   const [authed, setAuthed] = useState(false);
   const [expiresAt, setExpiresAt] = useState<string | null>(loadStoredExpiry);
   const [monitors, setMonitors] = useState<Monitor[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [url, setUrl] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -57,7 +71,12 @@ export function TryTab() {
 
   const refreshMonitors = useCallback(async () => {
     const rows = await listMyMonitors();
-    setMonitors(rows.filter((m) => m.isActive));
+    const active = rows.filter((m) => m.isActive);
+    setMonitors(active);
+    setSelectedId((prev) => {
+      if (prev && active.some((m) => m.id === prev)) return prev;
+      return active[0]?.id ?? null;
+    });
   }, []);
 
   useEffect(() => {
@@ -120,9 +139,10 @@ export function TryTab() {
     setSubmitting(true);
     setError(null);
     try {
-      await createMonitor(normalized);
+      const created = await createMonitor(normalized);
       setUrl('');
       await refreshMonitors();
+      setSelectedId(created.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create monitor');
     } finally {
@@ -143,6 +163,7 @@ export function TryTab() {
     }
   }
 
+  const selected = monitors.find((m) => m.id === selectedId) ?? null;
   const atQuota = monitors.length >= DEMO_MONITOR_QUOTA;
 
   if (loading) {
@@ -161,7 +182,7 @@ export function TryTab() {
           <h2 className="text-lg font-medium text-slate-100">Try it yourself</h2>
           <p className="mt-1 text-sm text-slate-400">
             Start a short-lived sandbox session. Add up to {DEMO_MONITOR_QUOTA} public HTTP(S) URLs
-            — Argus will check them from three regions, same as the live showcase.
+            — same live dashboard as Showcase, private to your browser.
           </p>
         </div>
 
@@ -194,12 +215,7 @@ export function TryTab() {
   return (
     <section className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-medium text-slate-100">Try it yourself</h2>
-          <p className="mt-1 text-sm text-slate-400">
-            {monitors.length} / {DEMO_MONITOR_QUOTA} monitors · checked every 60s from EU, AP, US
-          </p>
-        </div>
+        <h2 className="text-lg font-medium text-slate-100">Try it yourself</h2>
         {expiresAt && (
           <p className="text-xs text-slate-500">
             Session expires <span className="text-slate-400">{formatExpiry(expiresAt)}</span>
@@ -220,7 +236,10 @@ export function TryTab() {
         <label htmlFor="demo-url" className="text-sm font-medium text-slate-200">
           Add a URL
         </label>
-        <p className="mt-0.5 text-xs text-slate-500">https:// required · public hosts only</p>
+        <p className="mt-1 text-xs leading-relaxed text-slate-500">
+          https:// required · public hosts only · up to {DEMO_MONITOR_QUOTA} monitors per session (
+          {monitors.length} added). Your URLs are private to this browser.
+        </p>
         <div className="mt-3 flex flex-col gap-2 sm:flex-row">
           <input
             id="demo-url"
@@ -241,57 +260,65 @@ export function TryTab() {
         </div>
         {atQuota && (
           <p className="mt-2 text-xs text-amber-400/90">
-            Quota reached — remove a monitor below to add another.
+            Quota reached — remove a monitor to add another.
           </p>
         )}
       </form>
 
-      <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-4">
-        <h3 className="text-sm font-medium text-slate-200">Your monitors</h3>
-
-        {monitors.length === 0 && (
-          <p className="mt-4 py-6 text-center text-sm text-slate-500">
-            No monitors yet — add a URL above. First checks usually appear within a minute.
+      {monitors.length === 0 ? (
+        <div className="rounded-lg border border-slate-800 bg-slate-900/40 p-8 text-center text-sm text-slate-500">
+          <p>Add a URL above to start monitoring.</p>
+          <p className="mx-auto mt-2 max-w-md text-xs leading-relaxed text-slate-600">
+            {activityEmptyHint(60)}
           </p>
-        )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
+          <aside className="w-full shrink-0 lg:w-56">
+            <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+              Your monitors
+            </p>
+            <ul className="space-y-1">
+              {monitors.map((monitor) => (
+                <li key={monitor.id}>
+                  <div
+                    className={`flex items-center gap-1 rounded-r-lg border-y border-r border-l-2 ${
+                      monitor.id === selectedId
+                        ? 'border-l-emerald-500 border-y-slate-800 border-r-slate-800 bg-slate-900/70'
+                        : 'border-l-transparent border-slate-800/80 bg-slate-900/30'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId(monitor.id)}
+                      className="min-w-0 flex-1 px-3 py-2.5 text-left"
+                    >
+                      <p className="truncate text-sm font-medium text-slate-100">
+                        {shortUrl(monitor.url)}
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        every {monitor.intervalSeconds}s
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDelete(monitor.id)}
+                      disabled={deletingId === monitor.id}
+                      className="shrink-0 px-2 py-2 text-xs text-slate-600 hover:text-red-400 disabled:opacity-50"
+                      title="Remove monitor"
+                    >
+                      {deletingId === monitor.id ? '…' : '×'}
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </aside>
 
-        <ul className="mt-3 space-y-2">
-          {monitors.map((monitor) => (
-            <li
-              key={monitor.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-800/80 bg-slate-950/40 px-3 py-3"
-            >
-              <div className="min-w-0">
-                <a
-                  href={monitor.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="truncate text-sm font-medium text-slate-100 hover:text-emerald-400"
-                >
-                  {shortUrl(monitor.url)}
-                </a>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  every {monitor.intervalSeconds}s · added{' '}
-                  {new Date(monitor.createdAt).toLocaleDateString()}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => void handleDelete(monitor.id)}
-                disabled={deletingId === monitor.id}
-                className="shrink-0 rounded-md border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-400 hover:border-red-500/40 hover:text-red-400 disabled:opacity-50"
-              >
-                {deletingId === monitor.id ? 'Removing…' : 'Remove'}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      {monitors.length > 0 && (
-        <p className="text-xs text-slate-600">
-          Results are private to your session — they won&apos;t appear on the Showcase tab.
-        </p>
+          <div className="min-w-0 flex-1">
+            {selected && <MonitorDetail monitor={toMonitorView(selected)} scope="owned" />}
+          </div>
+        </div>
       )}
     </section>
   );

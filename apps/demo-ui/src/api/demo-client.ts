@@ -28,7 +28,7 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   return fetch(path, { credentials: 'include', ...init });
 }
 
-async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
+export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await apiFetch(path, init);
   if (!res.ok) {
     throw new ApiError(await parseError(res), res.status);

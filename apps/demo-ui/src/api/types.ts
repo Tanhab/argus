@@ -26,6 +26,18 @@ export interface Monitor {
   deactivatedAt: string | null;
   lastConsensus: ConsensusVerdict | null;
   lastConsensusAt: string | null;
+  status: MonitorStatus;
+  statusChangedAt: string | null;
+}
+
+/** Fields shared by showcase + sandbox detail panels */
+export interface MonitorView {
+  id: string;
+  url: string;
+  intervalSeconds: number;
+  lastConsensus: ConsensusVerdict | null;
+  lastConsensusAt: string | null;
+  status: MonitorStatus;
 }
 
 export interface DemoTokenResponse {

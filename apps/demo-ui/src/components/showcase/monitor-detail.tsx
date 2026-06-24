@@ -1,4 +1,5 @@
-import type { PublicMonitor } from '../../api/types';
+import type { MonitorDataScope } from '../../api/monitor-api';
+import type { MonitorView, PublicMonitor } from '../../api/types';
 import { monitorLabel, shortUrl } from '../../lib/monitor-label';
 import { StatusBadge } from '../status-badge';
 import { ActivityLog } from './activity-log';
@@ -7,10 +8,11 @@ import { LatencyChart } from './latency-chart';
 import { SlaPanel } from './sla-panel';
 
 interface MonitorDetailProps {
-  monitor: PublicMonitor;
+  monitor: MonitorView | PublicMonitor;
+  scope?: MonitorDataScope;
 }
 
-export function MonitorDetail({ monitor }: MonitorDetailProps) {
+export function MonitorDetail({ monitor, scope = 'public' }: MonitorDetailProps) {
   return (
     <div className="space-y-4">
       <header className="rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3.5">
@@ -41,17 +43,34 @@ export function MonitorDetail({ monitor }: MonitorDetailProps) {
       </header>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <LatencyChart monitorId={monitor.id} className="lg:col-span-2" />
+        <LatencyChart
+          monitorId={monitor.id}
+          scope={scope}
+          intervalSeconds={monitor.intervalSeconds}
+          className="lg:col-span-2"
+        />
         <ConsensusPanel
           monitorId={monitor.id}
+          scope={scope}
+          intervalSeconds={monitor.intervalSeconds}
           verdict={monitor.lastConsensus}
           verdictAt={monitor.lastConsensusAt}
         />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-5">
-        <ActivityLog monitorId={monitor.id} className="lg:col-span-3" />
-        <SlaPanel monitorId={monitor.id} className="lg:col-span-2" />
+        <ActivityLog
+          monitorId={monitor.id}
+          scope={scope}
+          intervalSeconds={monitor.intervalSeconds}
+          className="lg:col-span-3"
+        />
+        <SlaPanel
+          monitorId={monitor.id}
+          scope={scope}
+          intervalSeconds={monitor.intervalSeconds}
+          className="lg:col-span-2"
+        />
       </div>
     </div>
   );

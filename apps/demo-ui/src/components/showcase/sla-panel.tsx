@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react';
-import { getPublicSla } from '../../api/client';
+import type { MonitorDataScope } from '../../api/monitor-api';
+import { getMonitorSla } from '../../api/monitor-api';
 import type { SlaResponse, SlaWindowPreset } from '../../api/types';
+import {
+  slaLowConfidenceHint,
+  slaNoIncidentsHint,
+  slaUptimePendingHint,
+} from '../../lib/empty-state-copy';
 import { POLL_MS } from '../../lib/poll-interval';
 import { slaWindowRange } from '../../lib/sla-window';
 
@@ -8,6 +14,8 @@ const PRESETS: SlaWindowPreset[] = ['24h', '7d', '30d'];
 
 interface SlaPanelProps {
   monitorId: string;
+  scope?: MonitorDataScope;
+  intervalSeconds?: number;
   className?: string;
 }
 
@@ -24,7 +32,12 @@ function formatShort(iso: string): string {
   });
 }
 
-export function SlaPanel({ monitorId, className = '' }: SlaPanelProps) {
+export function SlaPanel({
+  monitorId,
+  scope = 'public',
+  intervalSeconds = 60,
+  className = '',
+}: SlaPanelProps) {
   const [preset, setPreset] = useState<SlaWindowPreset>('24h');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +50,7 @@ export function SlaPanel({ monitorId, className = '' }: SlaPanelProps) {
     async function load() {
       try {
         const { from, to } = slaWindowRange(preset);
-        const result = await getPublicSla(monitorId, from, to);
+        const result = await getMonitorSla(scope, monitorId, from, to);
         if (cancelled) return;
         setData(result);
         setError(null);
@@ -58,7 +71,7 @@ export function SlaPanel({ monitorId, className = '' }: SlaPanelProps) {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [monitorId, preset]);
+  }, [monitorId, scope, preset]);
 
   const sli = data?.sli;
   const incidents = data?.incidents ?? [];
@@ -102,10 +115,16 @@ export function SlaPanel({ monitorId, className = '' }: SlaPanelProps) {
             <p className="mt-1 text-xs text-slate-400">
               {sli.downtimeMinutes} min down · {sli.monitoredMinutes} min monitored
             </p>
-            {sli.lowConfidence && (
-              <p className="mt-2 text-xs text-amber-400/90">
-                Low confidence — limited check coverage in this window
+            {sli.monitoredMinutes === 0 ? (
+              <p className="mt-2 text-xs leading-relaxed text-amber-400/90">
+                {slaUptimePendingHint(intervalSeconds)}
               </p>
+            ) : (
+              sli.lowConfidence && (
+                <p className="mt-2 text-xs leading-relaxed text-amber-400/90">
+                  {slaLowConfidenceHint()}
+                </p>
+              )
             )}
           </>
         )}
@@ -123,7 +142,9 @@ export function SlaPanel({ monitorId, className = '' }: SlaPanelProps) {
             </div>
           )}
           {!loading && !error && incidents.length === 0 && (
-            <p className="py-6 text-center text-xs text-slate-500">No downtime in this window</p>
+            <p className="px-2 py-6 text-center text-xs leading-relaxed text-slate-500">
+              {slaNoIncidentsHint()}
+            </p>
           )}
           <ul className="space-y-1.5 p-1">
             {incidents.map((incident) => (
