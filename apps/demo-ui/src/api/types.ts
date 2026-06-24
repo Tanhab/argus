@@ -36,3 +36,42 @@ export interface CheckResult {
   errorType: string | null;
   checkedAt: string;
 }
+
+export interface StatusEvent {
+  id: number;
+  monitorId: string;
+  fromStatus: string;
+  toStatus: string;
+  occurredAt: string;
+}
+
+export interface AnomalyEvent {
+  id: number;
+  monitorId: string;
+  direction: string;
+  zScore: number;
+  durationMs: number;
+  baselineEwma: number;
+  baselineStdDev: number;
+  checkerId: string | null;
+  scope: string;
+  occurredAt: string;
+}
+
+export interface DeliveredAlert {
+  id: number;
+  monitorId: string;
+  kind: string;
+  createdAt: string;
+  sentAt: string;
+}
+
+export type ActivityKind = 'CHECK' | 'STATE' | 'ANOMALY' | 'ALERT';
+
+export interface ActivityEntry {
+  key: string;
+  kind: ActivityKind;
+  occurredAt: string;
+  title: string;
+  detail: string;
+}

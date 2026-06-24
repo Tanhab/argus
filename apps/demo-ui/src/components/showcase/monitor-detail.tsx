@@ -1,6 +1,7 @@
 import type { PublicMonitor } from '../../api/types';
 import { monitorLabel, shortUrl } from '../../lib/monitor-label';
 import { StatusBadge } from '../status-badge';
+import { ActivityLog } from './activity-log';
 import { ConsensusPanel } from './consensus-panel';
 import { LatencyChart } from './latency-chart';
 
@@ -78,11 +79,7 @@ export function MonitorDetail({ monitor }: MonitorDetailProps) {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-5">
-        <PlaceholderSection
-          className="lg:col-span-3"
-          title="Activity log"
-          hint="CHECK / STATE / ANOMALY / ALERT with filter chips"
-        />
+        <ActivityLog monitorId={monitor.id} className="lg:col-span-3" />
         <PlaceholderSection
           className="lg:col-span-2"
           title="SLA & incidents"
