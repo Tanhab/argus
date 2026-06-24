@@ -27,3 +27,9 @@ export class AuthError extends ArgusError {
     super(message, 'auth_failed', 401, cause);
   }
 }
+
+export class ConflictError extends ArgusError {
+  constructor(message: string, cause?: unknown) {
+    super(message, 'conflict', 409, cause);
+  }
+}
