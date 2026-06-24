@@ -15,6 +15,24 @@ export interface PublicMonitor {
   statusChangedAt: string | null;
 }
 
+/** Authenticated monitor row from GET/POST /v1/monitors */
+export interface Monitor {
+  id: string;
+  userId: string;
+  url: string;
+  intervalSeconds: number;
+  isActive: boolean;
+  createdAt: string;
+  deactivatedAt: string | null;
+  lastConsensus: ConsensusVerdict | null;
+  lastConsensusAt: string | null;
+}
+
+export interface DemoTokenResponse {
+  key: string;
+  expiresAt: string;
+}
+
 export type LatencyWindow = '1h' | '24h';
 
 export interface BucketedLatencyPoint {
@@ -74,4 +92,42 @@ export interface ActivityEntry {
   occurredAt: string;
   title: string;
   detail: string;
+}
+
+export type SlaWindowPreset = '24h' | '7d' | '30d';
+
+export interface SlaIncident {
+  from: string;
+  to: string;
+  minutes: number;
+}
+
+export interface SlaResponse {
+  monitorId: string;
+  window: {
+    from: string;
+    to: string;
+    effectiveFrom: string;
+    effectiveTo: string;
+  };
+  sli: {
+    totalMinutes: number;
+    maintenanceMinutes: number;
+    coverageGapMinutes: number;
+    monitoredMinutes: number;
+    downtimeMinutes: number;
+    uptimePercent: number;
+    lowConfidence: boolean;
+  };
+  incidents: SlaIncident[];
+  slo: null | {
+    target: number;
+    met: boolean;
+    errorBudget: {
+      totalMinutes: number;
+      consumedMinutes: number;
+      remainingMinutes: number;
+      remainingPercent: number;
+    };
+  };
 }

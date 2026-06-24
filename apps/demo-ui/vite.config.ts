@@ -37,6 +37,9 @@ export default defineConfig({
   server: {
     port: 5173,
     open: '/demo/',
+    fs: {
+      allow: ['../..'],
+    },
     proxy: {
       '/v1': 'http://localhost:3000',
       '/docs': 'http://localhost:3000',

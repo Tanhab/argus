@@ -5,6 +5,10 @@ import { DEFAULT_SHOWCASE_MONITOR_ID } from '../../lib/monitor-label';
 import { MonitorCard } from './monitor-card';
 import { MonitorDetail } from './monitor-detail';
 
+interface ShowcaseTabProps {
+  onCreateMonitor?: () => void;
+}
+
 function ShowcaseSkeleton() {
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
@@ -23,7 +27,7 @@ function ShowcaseSkeleton() {
   );
 }
 
-export function ShowcaseTab() {
+export function ShowcaseTab({ onCreateMonitor }: ShowcaseTabProps) {
   const [monitors, setMonitors] = useState<PublicMonitor[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,22 +90,33 @@ export function ShowcaseTab() {
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
       {/* Mobile: horizontal strip */}
-      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 lg:hidden">
-        {monitors.map((monitor) => (
-          <MonitorCard
-            key={monitor.id}
-            monitor={monitor}
-            selected={monitor.id === selectedId}
-            onSelect={() => setSelectedId(monitor.id)}
-            variant="strip"
-          />
-        ))}
+      <div className="-mx-1 flex flex-col gap-3 px-1 pb-1 lg:hidden">
+        <div className="flex gap-2 overflow-x-auto">
+          {monitors.map((monitor) => (
+            <MonitorCard
+              key={monitor.id}
+              monitor={monitor}
+              selected={monitor.id === selectedId}
+              onSelect={() => setSelectedId(monitor.id)}
+              variant="strip"
+            />
+          ))}
+        </div>
+        {onCreateMonitor && (
+          <button
+            type="button"
+            onClick={onCreateMonitor}
+            className="w-full rounded-lg border border-dashed border-slate-700 bg-slate-900/30 px-3 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:border-emerald-500/40 hover:bg-slate-900/50 hover:text-slate-100"
+          >
+            Create your own monitor
+          </button>
+        )}
       </div>
 
       {/* Desktop: left rail */}
-      <aside className="hidden w-52 shrink-0 lg:block">
+      <aside className="hidden w-56 shrink-0 lg:block">
         <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-slate-500">
-          Monitors
+          Live monitor
         </p>
         <div className="space-y-1">
           {monitors.map((monitor) => (
@@ -114,6 +129,15 @@ export function ShowcaseTab() {
             />
           ))}
         </div>
+        {onCreateMonitor && (
+          <button
+            type="button"
+            onClick={onCreateMonitor}
+            className="mt-3 w-full rounded-lg border border-dashed border-slate-700 bg-slate-900/30 px-3 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:border-emerald-500/40 hover:bg-slate-900/50 hover:text-slate-100"
+          >
+            Create your own monitor
+          </button>
+        )}
       </aside>
 
       {/* Main detail — bento inside MonitorDetail */}

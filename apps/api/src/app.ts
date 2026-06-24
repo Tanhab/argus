@@ -6,6 +6,7 @@ import swaggerUi from '@fastify/swagger-ui';
 import Fastify, { type FastifyError } from 'fastify';
 import type { PgBoss } from 'pg-boss';
 import { config } from './config.js';
+import { demoStaticPlugin } from './demo-static.js';
 import { ArgusError } from './errors.js';
 import { registerMaintenanceJobs } from './maintenance/register-jobs.js';
 import { startBoss, stopBoss } from './notifier/boss.js';
@@ -150,6 +151,8 @@ export async function buildApp() {
   await app.register(maintenanceRoutes, { prefix: '/v1' });
   await app.register(internalRoutes, { prefix: '/internal' });
   await app.register(slaRoutes, { prefix: '/v1' });
+
+  await app.register(demoStaticPlugin);
 
   await app.register(swaggerUi, {
     routePrefix: '/docs',

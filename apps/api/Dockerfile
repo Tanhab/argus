@@ -7,6 +7,7 @@ WORKDIR /repo
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/
 COPY apps/checker/package.json apps/checker/
+COPY apps/demo-ui/package.json apps/demo-ui/
 COPY packages/db/package.json packages/db/
 COPY packages/logger/package.json packages/logger/
 COPY packages/sla/package.json packages/sla/
@@ -17,12 +18,14 @@ RUN npm ci
 # Copy source
 COPY tsconfig.base.json ./
 COPY apps/api apps/api
+COPY apps/demo-ui apps/demo-ui
+COPY docs docs
 COPY packages/db packages/db
 COPY packages/logger packages/logger
 COPY packages/sla packages/sla
 
-# Build the api and its workspace deps
-RUN npm run build -w @argus/logger -w @argus/db -w @argus/sla -w @argus/api
+# Build the api, demo-ui, and workspace deps
+RUN npm run build -w @argus/logger -w @argus/db -w @argus/sla -w @argus/demo-ui -w @argus/api
 
 # Prune dev deps so the runtime stage gets a clean node_modules
 RUN npm prune --omit=dev
@@ -36,6 +39,8 @@ WORKDIR /app
 COPY --from=builder /repo/node_modules ./node_modules
 COPY --from=builder /repo/apps/api/dist ./apps/api/dist
 COPY --from=builder /repo/apps/api/package.json ./apps/api/
+COPY --from=builder /repo/apps/demo-ui/dist ./apps/demo-ui/dist
+COPY --from=builder /repo/apps/demo-ui/package.json ./apps/demo-ui/
 COPY --from=builder /repo/packages/db/dist ./packages/db/dist
 COPY --from=builder /repo/packages/db/package.json ./packages/db/
 COPY --from=builder /repo/packages/logger/dist ./packages/logger/dist

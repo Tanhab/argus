@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { BenchmarksTab } from './components/benchmarks/benchmarks-tab';
 import { ShowcaseTab } from './components/showcase/showcase-tab';
+import { TryTab } from './components/try/try-tab';
 
 type Tab = 'showcase' | 'try' | 'benchmarks';
 
@@ -38,21 +40,9 @@ export function App() {
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
-        {tab === 'showcase' && <ShowcaseTab />}
-        {tab === 'try' && (
-          <section className="space-y-2">
-            <h2 className="text-lg font-medium text-slate-100">Try it yourself</h2>
-            <p className="text-sm text-slate-400">
-              Sandbox: mint a demo cookie and add up to 3 URLs.
-            </p>
-          </section>
-        )}
-        {tab === 'benchmarks' && (
-          <section className="space-y-2">
-            <h2 className="text-lg font-medium text-slate-100">Engineering benchmarks</h2>
-            <p className="text-sm text-slate-400">Static charts from the Phase 8 benchmark runs.</p>
-          </section>
-        )}
+        {tab === 'showcase' && <ShowcaseTab onCreateMonitor={() => setTab('try')} />}
+        {tab === 'try' && <TryTab />}
+        {tab === 'benchmarks' && <BenchmarksTab />}
       </main>
 
       <footer className="border-t border-slate-800 bg-slate-900/50">

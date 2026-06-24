@@ -4,66 +4,37 @@ import { StatusBadge } from '../status-badge';
 import { ActivityLog } from './activity-log';
 import { ConsensusPanel } from './consensus-panel';
 import { LatencyChart } from './latency-chart';
+import { SlaPanel } from './sla-panel';
 
 interface MonitorDetailProps {
   monitor: PublicMonitor;
 }
 
-function PlaceholderSection({
-  title,
-  hint,
-  tall,
-  className = '',
-}: {
-  title: string;
-  hint: string;
-  tall?: boolean;
-  className?: string;
-}) {
-  return (
-    <section
-      className={`flex h-full flex-col rounded-lg border border-slate-800 bg-slate-900/40 p-4 ${className}`}
-    >
-      <h3 className="text-sm font-medium text-slate-200">{title}</h3>
-      <p className="mt-1 text-xs text-slate-500">{hint}</p>
-      <div
-        className={`mt-3 flex-1 animate-pulse rounded bg-slate-800/60 ${tall ? 'min-h-48' : 'min-h-28'}`}
-      />
-    </section>
-  );
-}
-
 export function MonitorDetail({ monitor }: MonitorDetailProps) {
   return (
     <div className="space-y-4">
-      <header className="rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+      <header className="rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3.5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <p className="text-xs text-slate-500">{monitorLabel(monitor.url)}</p>
             <h2 className="truncate text-lg font-semibold text-slate-50">
               {shortUrl(monitor.url)}
             </h2>
           </div>
-          <div className="flex flex-wrap items-center gap-3 text-sm">
+          <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 text-sm">
             <StatusBadge status={monitor.status} />
-            <span className="text-slate-600">·</span>
-            <span className="text-slate-400">
-              consensus{' '}
-              <span className="text-slate-200">
-                {monitor.lastConsensus?.replace('_', ' ') ?? '—'}
-              </span>
-            </span>
-            <span className="text-slate-600">·</span>
-            <span className="text-slate-400">
-              every <span className="text-slate-200">{monitor.intervalSeconds}s</span>
-            </span>
+            <p className="text-xs text-slate-400 sm:text-sm">
+              Periodically checks:{' '}
+              <span className="font-medium text-slate-200">{monitor.intervalSeconds} seconds</span>
+            </p>
             <a
               href={monitor.url}
               target="_blank"
               rel="noreferrer"
-              className="text-xs text-emerald-500/80 hover:text-emerald-400"
+              className="inline-flex items-center gap-1 text-xs font-medium text-emerald-500/90 hover:text-emerald-400 sm:text-sm"
             >
-              Open ↗
+              Open Website
+              <span aria-hidden>↗</span>
             </a>
           </div>
         </div>
@@ -80,11 +51,7 @@ export function MonitorDetail({ monitor }: MonitorDetailProps) {
 
       <div className="grid gap-4 lg:grid-cols-5">
         <ActivityLog monitorId={monitor.id} className="lg:col-span-3" />
-        <PlaceholderSection
-          className="lg:col-span-2"
-          title="SLA & incidents"
-          hint="24h / 7d / 30d uptime"
-        />
+        <SlaPanel monitorId={monitor.id} className="lg:col-span-2" />
       </div>
     </div>
   );

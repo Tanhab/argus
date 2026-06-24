@@ -5,7 +5,6 @@ export function monitorLabel(url: string): string {
   try {
     const host = new URL(url).hostname;
     if (host.includes('vercel.app')) return 'Live dev-site';
-    if (host.includes('138.68.109.43') || host.includes('7070')) return 'Bench target';
     return host;
   } catch {
     return url;

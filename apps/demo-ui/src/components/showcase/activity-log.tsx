@@ -169,7 +169,8 @@ export function ActivityLog({ monitorId, className = '' }: ActivityLogProps) {
         <div>
           <h3 className="text-sm font-medium text-slate-200">Activity log</h3>
           <p className="mt-0.5 text-xs text-slate-500">
-            Status = health changes · Anomaly = slow spike · scroll inside the box below
+            Check = periodic check · Status = health changes · Anomaly = slow spike · Alert = alerts
+            fired
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -213,7 +214,6 @@ export function ActivityLog({ monitorId, className = '' }: ActivityLogProps) {
 
       <p className="mt-2 text-xs text-slate-600">
         {visible.length} of {filtered.length} matching
-        {remaining > 0 ? ' · scroll or load more for older events' : ''}
         {!enabled.has('CHECK') && entries.some((e) => e.kind === 'CHECK')
           ? ' · check heartbeats hidden'
           : ''}
@@ -221,7 +221,7 @@ export function ActivityLog({ monitorId, className = '' }: ActivityLogProps) {
 
       <div
         ref={scrollRef}
-        className="mt-2 h-64 overflow-y-auto rounded-md border border-slate-800/80 bg-slate-950/20 pr-1"
+        className="scroll-pane mt-2 h-64 overflow-y-auto rounded-md border border-slate-800/80 bg-slate-950/20 p-1"
       >
         {loading && entries.length === 0 && (
           <div className="space-y-2">
@@ -257,29 +257,26 @@ export function ActivityLog({ monitorId, className = '' }: ActivityLogProps) {
             </li>
           ))}
         </ul>
-        {remaining > 0 && (
-          <div className="sticky bottom-0 border-t border-slate-800/80 bg-slate-950/95 p-2">
-            <button
-              type="button"
-              onClick={loadMore}
-              className="w-full rounded-md border border-slate-700 bg-slate-900 py-1.5 text-xs font-medium text-slate-300 hover:border-slate-600 hover:text-slate-100"
-            >
-              Load {Math.min(PAGE_SIZE, remaining)} older ({remaining} left)
-            </button>
-          </div>
-        )}
-        {visibleCount > PAGE_SIZE && remaining === 0 && (
-          <div className="border-t border-slate-800/80 p-2 text-center">
-            <button
-              type="button"
-              onClick={showLess}
-              className="text-xs text-slate-500 hover:text-slate-300"
-            >
-              Show less
-            </button>
-          </div>
-        )}
       </div>
+
+      {remaining > 0 && (
+        <button
+          type="button"
+          onClick={loadMore}
+          className="mt-2 w-full rounded-md border border-slate-700 bg-slate-900 py-1.5 text-xs font-medium text-slate-300 hover:border-slate-600 hover:text-slate-100"
+        >
+          Load {Math.min(PAGE_SIZE, remaining)} older ({remaining} left)
+        </button>
+      )}
+      {visibleCount > PAGE_SIZE && remaining === 0 && (
+        <button
+          type="button"
+          onClick={showLess}
+          className="mt-2 text-center text-xs text-slate-500 hover:text-slate-300"
+        >
+          Show less
+        </button>
+      )}
     </section>
   );
 }

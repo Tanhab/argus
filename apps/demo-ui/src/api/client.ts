@@ -5,6 +5,7 @@ import type {
   DeliveredAlert,
   LatencyWindow,
   PublicMonitor,
+  SlaResponse,
   StatusEvent,
 } from './types';
 
@@ -41,4 +42,9 @@ export function getPublicAnomalies(monitorId: string, limit = 20): Promise<Anoma
 
 export function getPublicAlerts(monitorId: string, limit = 20): Promise<DeliveredAlert[]> {
   return apiGet(`/v1/public/monitors/${monitorId}/alerts?limit=${limit}`);
+}
+
+export function getPublicSla(monitorId: string, from: string, to: string): Promise<SlaResponse> {
+  const qs = new URLSearchParams({ from, to });
+  return apiGet(`/v1/public/monitors/${monitorId}/sla?${qs}`);
 }
