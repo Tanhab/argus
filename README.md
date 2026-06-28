@@ -433,9 +433,7 @@ Carried forward and owned, not hidden:
 
 - **No HA.** Single VPS by deliberate cost tradeoff; durability is Hetzner automated backup (~24h RPO, minutes RTO), not multi-node failover.
 - **No real authn/authz.** App access is a single hardcoded `MONITOR_USER_ID`; the demo uses expiring, IP-throttled tokens, not production session handling.
-- **SSRF guard validates at monitor creation, not at check time** - DNS rebinding is not fully closed.
 - **EWMA detects step changes only** - no gradual-drift detection, no seasonality, and a sustained slowdown self-quiets as the baseline chases it.
 - **Coverage-gap SLA exclusion is a perverse incentive** - mitigated by reporting it separately and flagging low confidence, not solved.
 - **Three checkers is the minimum for 2-of-3** - one provider outage removes a third of capacity.
 - **Deploy is GitHub Actions over SSH, not Terraform** - works, not fully declarative.
-- **No `/metrics` / Prometheus** - operational data lives in Postgres; the demo and optional Grafana read it directly.
