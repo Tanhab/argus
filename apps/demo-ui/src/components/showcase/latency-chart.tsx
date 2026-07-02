@@ -11,6 +11,40 @@ import { bucketedLatencyToUplot } from '../../lib/latency-series';
 import { POLL_MS } from '../../lib/poll-interval';
 
 const SERIES_COLORS = ['#34d399', '#38bdf8', '#fbbf24'] as const;
+const EMPTY_DATA: uPlot.AlignedData = [[], [], [], []];
+
+function buildChartOptions(width: number): uPlot.Options {
+  return {
+    width,
+    height: 220,
+    series: [
+      {},
+      ...SERIES_COLORS.map((stroke, i) => ({
+        label: checkerLabel(CHECKER_ORDER[i] ?? ''),
+        stroke,
+        width: 2,
+        spanGaps: true,
+        points: { show: true, size: 5 },
+      })),
+    ],
+    scales: { x: { time: true } },
+    axes: [
+      {
+        stroke: '#64748b',
+        grid: { stroke: '#1e293b' },
+        ticks: { stroke: '#334155' },
+      },
+      {
+        stroke: '#64748b',
+        grid: { stroke: '#1e293b' },
+        ticks: { stroke: '#334155' },
+        values: (_u, vals) => vals.map((v) => `${Math.round(v)} ms`),
+      },
+    ],
+    legend: { show: true },
+    cursor: { drag: { x: false, y: false } },
+  };
+}
 
 interface LatencyChartProps {
   monitorId: string;
@@ -52,7 +86,9 @@ export function LatencyChart({
       }
     }
 
+    setData(null);
     setLoading(true);
+    setError(null);
     void load();
     timer = setInterval(() => void load(), POLL_MS);
 
@@ -64,62 +100,37 @@ export function LatencyChart({
 
   useEffect(() => {
     const el = containerRef.current;
-    if (!el || !data || data[0].length === 0) {
-      chartRef.current?.destroy();
-      chartRef.current = null;
-      return;
-    }
+    if (!el) return;
 
-    const width = el.clientWidth || 600;
-
-    chartRef.current?.destroy();
-    chartRef.current = new uPlot(
-      {
-        width,
-        height: 220,
-        series: [
-          {},
-          ...SERIES_COLORS.map((stroke, i) => ({
-            label: checkerLabel(CHECKER_ORDER[i] ?? ''),
-            stroke,
-            width: 2,
-            spanGaps: false,
-          })),
-        ],
-        scales: { x: { time: true } },
-        axes: [
-          {
-            stroke: '#64748b',
-            grid: { stroke: '#1e293b' },
-            ticks: { stroke: '#334155' },
-          },
-          {
-            stroke: '#64748b',
-            grid: { stroke: '#1e293b' },
-            ticks: { stroke: '#334155' },
-            values: (_u, vals) => vals.map((v) => `${Math.round(v)} ms`),
-          },
-        ],
-        legend: { show: true },
-        cursor: { drag: { x: false, y: false } },
-      },
-      data,
-      el,
-    );
+    const width = el.clientWidth > 0 ? el.clientWidth : 600;
+    const chart = new uPlot(buildChartOptions(width), EMPTY_DATA, el);
+    chartRef.current = chart;
 
     const ro = new ResizeObserver(() => {
-      if (chartRef.current && el.clientWidth > 0) {
-        chartRef.current.setSize({ width: el.clientWidth, height: 220 });
+      if (el.clientWidth > 0) {
+        chart.setSize({ width: el.clientWidth, height: 220 });
       }
     });
     ro.observe(el);
 
     return () => {
       ro.disconnect();
-      chartRef.current?.destroy();
+      chart.destroy();
       chartRef.current = null;
     };
+  }, []);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    if (!data || data[0].length === 0) {
+      chart.setData(EMPTY_DATA);
+      return;
+    }
+    chart.setData(data);
   }, [data]);
+
+  const showEmptyHint = !loading && !error && (!data || data[0].length === 0);
 
   return (
     <section
@@ -157,7 +168,7 @@ export function LatencyChart({
             {error}
           </p>
         )}
-        {!loading && !error && data && data[0].length === 0 && (
+        {showEmptyHint && (
           <p className="absolute inset-0 flex items-center justify-center px-4 text-center text-xs leading-relaxed text-slate-500">
             {latencyEmptyHint(intervalSeconds)}
           </p>
