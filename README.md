@@ -429,7 +429,6 @@ A running record of decisions I made each phase. Entries stay as-written when la
 
 ## Known Limitations
 
-Carried forward and owned, not hidden:
 
 - **No HA.** Single VPS by deliberate cost tradeoff; durability is Hetzner automated backup (~24h RPO, minutes RTO), not multi-node failover.
 - **No real authn/authz.** App access is a single hardcoded `MONITOR_USER_ID`; the demo uses expiring, IP-throttled tokens, not production session handling.

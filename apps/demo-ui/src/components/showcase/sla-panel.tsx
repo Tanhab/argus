@@ -23,6 +23,10 @@ function formatPercent(value: number): string {
   return `${value.toFixed(value >= 99.995 ? 3 : 2)}%`;
 }
 
+function formatMinutes(value: number): string {
+  return value.toFixed(3);
+}
+
 function formatShort(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
     month: 'short',
@@ -113,7 +117,8 @@ export function SlaPanel({
               {formatPercent(sli.uptimePercent)}
             </p>
             <p className="mt-1 text-xs text-slate-400">
-              {sli.downtimeMinutes} min down · {sli.monitoredMinutes} min monitored
+              {formatMinutes(sli.downtimeMinutes)} min down · {formatMinutes(sli.monitoredMinutes)}{' '}
+              min monitored
             </p>
             {sli.monitoredMinutes === 0 ? (
               <p className="mt-2 text-xs leading-relaxed text-amber-400/90">
