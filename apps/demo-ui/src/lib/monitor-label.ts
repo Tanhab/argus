@@ -1,5 +1,8 @@
-/** Default showcase monitor — live Vercel dev-site (matches PUBLIC_SHOWCASE_MONITOR_IDS order in prod). */
+/** Default showcase monitor — first id in PUBLIC_SHOWCASE_MONITOR_IDS (prod allowlist). */
 export const DEFAULT_SHOWCASE_MONITOR_ID = 'd7ff842a-3a68-44e2-9f85-e9bb377b390f';
+
+/** Small label above the URL in the monitor detail header. */
+export const MONITOR_DETAIL_EYEBROW = 'Tracking monitor';
 
 export function monitorLabel(url: string): string {
   try {

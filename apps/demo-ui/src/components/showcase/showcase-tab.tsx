@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { getPublicMonitors } from '../../api/client';
 import type { PublicMonitor } from '../../api/types';
 import { DEFAULT_SHOWCASE_MONITOR_ID } from '../../lib/monitor-label';
+import { POLL_MS } from '../../lib/poll-interval';
 import { MonitorCard } from './monitor-card';
 import { MonitorDetail } from './monitor-detail';
 
@@ -33,6 +34,17 @@ export function ShowcaseTab({ onCreateMonitor }: ShowcaseTabProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const refreshMonitors = useCallback(async () => {
+    const rows = await getPublicMonitors();
+    setMonitors(rows);
+    setSelectedId((prev) => {
+      if (prev && rows.some((m) => m.id === prev)) return prev;
+      const defaultMonitor =
+        rows.find((m) => m.id === DEFAULT_SHOWCASE_MONITOR_ID) ?? rows[0] ?? null;
+      return defaultMonitor?.id ?? null;
+    });
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -40,12 +52,7 @@ export function ShowcaseTab({ onCreateMonitor }: ShowcaseTabProps) {
       setLoading(true);
       setError(null);
       try {
-        const rows = await getPublicMonitors();
-        if (cancelled) return;
-        setMonitors(rows);
-        const defaultMonitor =
-          rows.find((m) => m.id === DEFAULT_SHOWCASE_MONITOR_ID) ?? rows[0] ?? null;
-        setSelectedId(defaultMonitor?.id ?? null);
+        await refreshMonitors();
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load showcase monitors');
@@ -59,7 +66,19 @@ export function ShowcaseTab({ onCreateMonitor }: ShowcaseTabProps) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshMonitors]);
+
+  useEffect(() => {
+    if (loading || monitors.length === 0) return;
+
+    const timer = setInterval(() => {
+      void refreshMonitors().catch(() => {
+        // keep last good snapshot on transient poll failures
+      });
+    }, POLL_MS);
+
+    return () => clearInterval(timer);
+  }, [loading, monitors.length, refreshMonitors]);
 
   const selected = monitors.find((m) => m.id === selectedId) ?? null;
 

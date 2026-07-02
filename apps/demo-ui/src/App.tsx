@@ -47,7 +47,7 @@ export function App() {
 
       <footer className="border-t border-slate-800 bg-slate-900/50">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-4 text-sm text-slate-400 sm:flex-row sm:items-center sm:justify-between">
-          <p>Live demo only — not production auth.</p>
+          <p>Live demo only.</p>
           <div className="flex gap-4">
             <a
               href="https://github.com/Tanhab/argus"
