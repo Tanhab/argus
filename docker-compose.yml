@@ -26,6 +26,9 @@ services:
       NODE_ENV: production
       LOG_LEVEL: info
       PORT: "3000"
+      MONITOR_USER_ID: local-dev
+      NTFY_TOPIC_URL: https://ntfy.sh/argus-local-bench
+      PUBLIC_SHOWCASE_MONITOR_IDS: d7ff842a-3a68-44e2-9f85-e9bb377b390f
     ports:
       - "3000:3000"
     depends_on:

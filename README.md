@@ -1,21 +1,28 @@
 # Argus
 
-A small distributed service monitor I'm building as a portfolio backend development project. The real goal is to learn how a distributed system actually fits together - multi-region checks, consensus, anomaly detection, SLA reporting.
+Argus is a distributed service monitor. Three independent checkers in Frankfurt, Singapore, and New York watch a target, agree on whether it is up or down by 2-of-3 consensus over a recent time window, detect latency anomalies against per-region baselines, suppress flapping with a four-state machine, and report SLA/uptime from an append-only transition log.
 
-I'm building it phase by phase. Each phase tries to do one thing. Whenever I face limitations, I plan to improve it in the next phase. New features show up when I notice the previous version isn't enough.
+**Live demo:** [https://argus.tanhab.com/demo](https://argus.tanhab.com/demo) · **API docs:** [https://argus.tanhab.com/docs](https://argus.tanhab.com/docs)
+
+![Argus demo dashboard — per-region latency, 2-of-3 consensus, activity log, and SLA](docs/Demo-Homepage.png)
+
+The demo lands on a live showcase monitor with real multi-region history: per-region latency from three checkers, the consensus verdict against each region's vote, a typed activity feed (checks / state changes / anomalies / alerts), and an SLA panel. "Try it yourself" mints a throwaway demo token so you can add your own monitor.
 
 ## Status
 
+Built phase by phase. Each phase does one thing; when it hits a limitation, the next phase addresses it. The [engineering ledger](#engineering-ledger) records the reasoning at the time, and [known limitations](#known-limitations) are acknowledged.
+
 | Phase | Features |
 |---|---|
-| [Phase 0 - Foundations](#phase-0--foundations) | Monorepo, Fastify API, structured logging, RFC 7807 errors, multi-stage Docker, CI |
-| [Phase 1 - Single Checker MVP](#phase-1--single-checker-mvp) | Monitor CRUD, in-process checker, partitioned results, ntfy.sh alerts |
-| [Phase 2 - Three Real Checkers](#phase-2--three-real-checkers) | Independent checker processes across 3 regions, API key auth, per-checker alerting |
-| [Phase 3 - Windowed Consensus](#phase-3--windowed-consensus) | 2-of-3 majority voting over a 90s window, advisory-lock serialised evaluation, alerts on consensus transitions |
-| [Phase 4 - State Machine with Flap Suppression](#phase-4--state-machine-with-flap-suppression) | Four-state machine with time-based thresholds, append-only `status_events`, pg-boss alert queue, alerts on state transitions |
-| [Phase 5 - EWMA Latency Anomaly Detection](#phase-5--ewma-latency-anomaly-detection) | Online EWMA baseline + z-score, `anomaly_events` log, slow-response alerts via existing pg-boss queue |
-| [Phase 6 - SLA, SLO, and Error Budget](#phase-6--sla-slo-and-error-budget) | Uptime from the FSM audit log, maintenance windows and coverage gaps excluded, optional SLO error budget |
-| [Phase 7 - Per-Checker Anomaly and Demo Hardening](#phase-7--per-checker-anomaly-and-demo-hardening) | Per-checker EWMA baselines, transactional alert outbox, scheduled jobs, SSRF guard, rate limiting, self-service demo tokens |
+| [Phase 0 - Foundations](#phase-0---foundations) | Monorepo, Fastify API, structured logging, RFC 7807 errors, multi-stage Docker, CI |
+| [Phase 1 - Single Checker MVP](#phase-1---single-checker-mvp) | Monitor CRUD, in-process checker, partitioned results, ntfy.sh alerts |
+| [Phase 2 - Three Real Checkers](#phase-2---three-real-checkers) | Independent checker processes across 3 regions, API key auth, per-checker alerting |
+| [Phase 3 - Windowed Consensus](#phase-3---windowed-consensus) | 2-of-3 majority voting over a 90s window, advisory-lock serialised evaluation, alerts on consensus transitions |
+| [Phase 4 - State Machine with Flap Suppression](#phase-4---state-machine-with-flap-suppression) | Four-state machine with time-based thresholds, append-only `status_events`, pg-boss alert queue, alerts on state transitions |
+| [Phase 5 - EWMA Latency Anomaly Detection](#phase-5---ewma-latency-anomaly-detection) | Online EWMA baseline + z-score, `anomaly_events` log, slow-response alerts via existing pg-boss queue |
+| [Phase 6 - SLA, SLO, and Error Budget](#phase-6---sla-slo-and-error-budget) | Uptime from the FSM audit log, maintenance windows and coverage gaps excluded, optional SLO error budget |
+| [Phase 7 - Per-Checker Anomaly and Demo Hardening](#phase-7---per-checker-anomaly-and-demo-hardening) | Per-checker EWMA baselines, transactional alert outbox, scheduled jobs, SSRF guard, rate limiting, self-service demo tokens |
+| [Phase 8 - Benchmarks, Live Demo, and README](#phase-8---benchmarks-live-demo-and-readme) | EWMA alpha sweep, benchmark consolidation, OpenAPI `/docs`, public showcase API, Caddy TLS, demo dashboard at `/demo` |
 
 ## Architecture
 
@@ -27,23 +34,23 @@ graph TD
         API --> DB
     end
 
-    EU[Checker EU - Frankfurt] -->|HTTP + API key| API
-    AP[Checker AP - Singapore] -->|HTTP + API key| API
-    US[Checker US - New York] -->|HTTP + API key| API
+    EU[Checker EU - Frankfurt] -->|HTTPS + API key| API
+    AP[Checker AP - Singapore] -->|HTTPS + API key| API
+    US[Checker US - New York] -->|HTTPS + API key| API
 ```
 
 Each checker runs independently - its own scheduler, its own heartbeat loop, its own network path. Results are POSTed to the API as they happen. No coordination between checkers.
 
 ## Stack
 
-Node 24 LTS, TypeScript 6 strict, ESM throughout. Fastify, Postgres 17 with raw `pg` (no ORM), Pino, Biome (format + lint), `node-pg-migrate`, multi-stage Docker, GitHub Actions, Husky + commitlint.
+Node 24 LTS, TypeScript 6 strict, ESM throughout. Fastify, Postgres 17 with raw `pg` (no ORM), Pino, Biome (format + lint), `node-pg-migrate`, pg-boss, multi-stage Docker, GitHub Actions, Caddy + Let's Encrypt, Husky + commitlint. Demo UI: Vite + React + Tailwind + uPlot.
 
 ## Running locally
 
 Requires Docker Desktop and Node 24.
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/argus.git
+git clone https://github.com/Tanhab/argus.git
 cd argus
 docker compose up --build
 ```
@@ -54,7 +61,7 @@ Brings up Postgres, the API on `localhost:3000` (`/health`, `/ready`), and a loc
 
 ## Benchmarks
 
-### Phase 3 ΓÇö consensus suppresses a noisy checker
+### Phase 3 — consensus suppresses a noisy checker
 
 Target: my Vercel-hosted dev site, monitored by all three checkers at 60s intervals. Impaired `checker-eu` by dropping forwarded TCP 443 from its container for 45s out of every 90s (20 cycles, 30 min). Other two checkers untouched.
 
@@ -65,7 +72,7 @@ Target: my Vercel-hosted dev site, monitored by all three checkers at 60s interv
 
 All 10 failures were clean 10s `AbortSignal` timeouts. Phase 2 per-checker alerting would have produced ~10 false-positive DOWN+RECOVERED pairs over the same window.
 
-### Phase 4 ΓÇö flap suppression
+### Phase 4 — flap suppression
 
 Target: a controllable `fake-target` server on the checker-eu droplet, monitored by all three checkers at 30s intervals with `down_threshold_seconds=60` and `recovery_threshold_seconds=60` (so the machine declares DOWN after two consecutive `down` checks and recovers after two `up`). Two runs of 100 flap cycles each, scripted with `tools/flap-script.sh`. "Consensus edges" is the alert count the previous phase's consensus-edge alerting would have produced over the same traffic.
 
@@ -74,39 +81,39 @@ Target: a controllable `fake-target` server on the checker-eu droplet, monitored
 | Sustained outages | 100 | 20s / 20s | 295 | 72 | 72 |
 | Sub-threshold flap | 100 | 10s / 10s | 199 | **0** | **0** |
 
-In the sustained run each 20s failure phase was long enough for two consecutive checks to both observe it, so 72 of the cycles became genuine outages. The state machine collapsed each outage's `up ΓåÆ degraded ΓåÆ down` churn into a single DOWN+RECOVERED pair: 295 consensus edges became 144 alerts.
+In the sustained run each 20s failure phase was long enough for two consecutive checks to both observe it, so 72 of the cycles became genuine outages. The state machine collapsed each outage's `up → degraded → down` churn into a single DOWN+RECOVERED pair: 295 consensus edges became 144 alerts.
 
 In the sub-threshold run each 10s failure phase was too short for two consecutive 30s checks to both catch it. All 99 observed failures entered DEGRADED and slid back to UP silently - zero crossed the threshold, zero alerts fired, against 199 consensus edges the old path would have alerted on. That is the phase: transient flap produces no alerts at all.
 
-### Phase 5 ΓÇö EWMA latency anomaly
+### Phase 5 — EWMA latency anomaly
 
 Target: `http://138.68.109.43:7070/` (same `fake-target` as Phase 4), monitored by all three checkers at 30s intervals. Driver: `tools/slow-script.sh` flips `/control/slow/400`, waits 120s, then `/control/ok`.
 
-The baseline was warmed naturally - the monitor had been running against the live target long past the 30-sample warm-up gate, so at injection it held 342 samples at ~168ms with ╧âΓëê7.9. That baseline is the genuine steady-state consensus median across the three regions (Frankfurt's low RTT plus Singapore/New York at ~300ms), not a hand-picked number.
+The baseline was warmed naturally - the monitor had been running against the live target long past the 30-sample warm-up gate, so at injection it held 342 samples at ~168ms with σ≈7.9. That baseline is the genuine steady-state consensus median across the three regions (Frankfurt's low RTT plus Singapore/New York at ~300ms), not a hand-picked number.
 
 Bench run (2026-06-14 UTC): `/control/slow/400` at 20:45:40, `/control/ok` at 20:47:42.
 
 | Metric | Target | Actual |
 |--------|--------|--------|
-| Baseline EWMA before inject | natural warm-up | ~168ms, ╧âΓëê7.9, 342 samples |
-| Cycles to SLOW alert (post-inject) | Γëñ ~3 | **~1** (first row ~4s, alert ~6s) |
+| Baseline EWMA before inject | natural warm-up | ~168ms, σ≈7.9, 342 samples |
+| Cycles to SLOW alert (post-inject) | ≤ ~3 | **~1** (first row ~4s, alert ~6s) |
 | Firing z-score (post-inject) | > 3 | **21.11** (median 322ms vs baseline 163) |
 | `monitors.status` during anomaly | `up` | **up** |
 | Post-recovery anomalies (120s window) | clears | **0 rows** |
 | Alert category | SLOW, not DOWN | **yes** (`kind: anomaly`, turtle tag) |
 
-`duration_ms` on an anomaly row is the consensus **median** across three checkers, not the 400ms `/control/slow/` floor - Frankfurt adds ~400ms to a low RTT, Singapore/New York add ~400ms on top of ~300ms RTT, so the median lands between them (~320ΓÇô570ms over the slow phase).
+`duration_ms` on an anomaly row is the consensus **median** across three checkers, not the 400ms `/control/slow/` floor - Frankfurt adds ~400ms to a low RTT, Singapore/New York add ~400ms on top of ~300ms RTT, so the median lands between them (~320–570ms over the slow phase).
 
 Two honest readings from the live data:
 
-- **The 3╧â rule is twitchy on a tight baseline.** Before injection, with ╧â as small as ~3.9, a 14ms jitter (163ΓåÆ177ms) crossed z=3 and fired a SLOW alert. A fixed multiplier over-fires when the variance is genuinely small.
-- **A sustained slowdown self-quiets.** The first slow reading screamed (z=21.1), but each subsequent slow reading folded into the EWMA - the baseline climbed 163ΓåÆ187ΓåÆ223ms and ╧â blew out 7.5ΓåÆ62ΓåÆ110, so z fell to 3.9 then 3.2 within three cycles. The detector is loud on the *onset* of a step change and progressively deaf to it once the baseline chases the new level. By bench end the EWMA sat at ~179ms, drifting back toward steady state.
+- **The 3σ rule is twitchy on a tight baseline.** Before injection, with σ as small as ~3.9, a 14ms jitter (163→177ms) crossed z=3 and fired a SLOW alert. A fixed multiplier over-fires when the variance is genuinely small.
+- **A sustained slowdown self-quiets.** The first slow reading screamed (z=21.1), but each subsequent slow reading folded into the EWMA - the baseline climbed 163→187→223ms and σ blew out 7.5→62→110, so z fell to 3.9 then 3.2 within three cycles. The detector is loud on the *onset* of a step change and progressively deaf to it once the baseline chases the new level. By bench end the EWMA sat at ~179ms, drifting back toward steady state.
 
-### Phase 6 ΓÇö SLA from the FSM audit log
+### Phase 6 — SLA from the FSM audit log
 
 The SLA endpoint reads, it doesn't measure new traffic, so the bench replays a window with known ground truth: the Phase 4 sustained-outage run (72 declared outages over ~67 minutes), turned into an uptime number from the same `status_events`.
 
-Window: `2026-06-07T03:31:13Z` ΓåÆ `04:37:57Z` (~66.7 min).
+Window: `2026-06-07T03:31:13Z` → `04:37:57Z` (~66.7 min).
 
 | Metric | Value |
 |--------|-------|
@@ -118,13 +125,31 @@ Window: `2026-06-07T03:31:13Z` ΓåÆ `04:37:57Z` (~66.7 min).
 
 The 72 incidents match the 72 DOWN alerts Phase 4 recorded over the same run - the timeline reconstructs the outages from the transition log alone, counting only `down` time. Scheduling a maintenance window over one outage drops its downtime to zero and moves those minutes into `maintenanceMinutes`. Adding `slo=99.9` shows the ~4s budget for a 66-minute window burned many times over by ~21 minutes of downtime; `slo=50` flips `met` to true.
 
+### Phase 8 — EWMA alpha sweep
+
+Offline replay of a recorded latency series through the production `updateEwma` function, sweeping α ∈ {0.05, 0.10, 0.15, 0.20, 0.30} at fixed `minSamples=30`, `zThreshold=3`. Measures the detection-latency vs. false-positive tradeoff that justifies the production α=0.15. Reproduce with `npx tsx tools/bench/ewma-alpha-sweep.ts`; CSV output in `docs/`.
+
+### Throughput — result ingestion
+
+A load test of the hot write path every checker result hits: `POST /internal/results`, which validates the body, looks up the monitor, inserts the result, and runs a consensus evaluation guarded by a per-monitor advisory lock. Driven by `autocannon` at 20 connections for 20s against a single API container with Postgres in Docker on the same machine (`NODE_ENV=production`).
+
+| Metric | Value |
+|--------|-------|
+| Throughput | ~506 req/s sustained (10k requests / 20s) |
+| Latency p50 | 35 ms |
+| Latency p99 | 81 ms |
+| Errors / non-2xx | 0 |
+
+All requests targeted one monitor, so concurrent evaluations contend on the same advisory lock and most skip the consensus body (the insert still commits) - this is the ingestion-under-contention number on a single instance, not a horizontally scaled one. The bottleneck is one Node process plus the Postgres connection pool; there is no second API replica.
+
 ---
 
 ## Engineering Ledger
 
 A running record of decisions I made each phase. Entries stay as-written when later phases ship; the log captures the reasoning at the time, not retrospective tidying.
 
-### Phase 0 - Foundations
+<details>
+<summary><strong>Phase 0 - Foundations</strong></summary>
 
 **Focus:** A deployable backend spine before any feature work. Strict TypeScript, structured logging, RFC 7807 errors, multi-stage Docker, and CI from day one.
 
@@ -147,7 +172,10 @@ A running record of decisions I made each phase. Entries stay as-written when la
 - `npm run build --workspaces` doesn't respect topological order, so `apps/api` failed to compile in CI before `packages/db` had emitted its `.d.ts` files. Resolved with explicit build ordering in the root script rather than introducing TypeScript project references - `composite: true` setup felt heavy for four workspaces, but I will change it if the project monorepo grows noticeably.
 - Each package owns its own environment variables. The API never reads `DATABASE_URL` directly; importing `@argus/db` triggers validation. Avoids duplicated `requireEnv` helpers and keeps the per-package contract explicit.
 
-### Phase 1 - Single Checker MVP
+</details>
+
+<details>
+<summary><strong>Phase 1 - Single Checker MVP</strong></summary>
 
 **Focus:** First real feature: a working uptime monitor with push alerts via ntfy.sh. Monitor CRUD routes, an in-process checker scheduled with `setInterval`, and partitioned `check_results` storage.
 
@@ -157,7 +185,7 @@ A running record of decisions I made each phase. Entries stay as-written when la
 - `monitors` table with `CHECK (interval_seconds BETWEEN 30 AND 3600)`; `check_results` partitioned by month with current and next month partitions created at migration time
 - In-process checker: `setInterval` per monitor, reseeds from DB on startup, resyncs every 60 seconds
 - Error classification on fetch failures: `timeout`, `dns_failure`, `connection_refused`, `tls_error`, `http_error`, `network_error` - reads `err.cause.code` not `err.code` because Node's fetch wraps syscall errors in a TypeError
-- Alerts on every upΓåödown transition via ntfy.sh - best-effort, failures logged as warn and never propagated
+- Alerts on every up↔down transition via ntfy.sh - best-effort, failures logged as warn and never propagated
 - Integration tests for all query functions and routes via testcontainers (real Postgres, no mocks)
 
 **Key decisions and tricky bugs:**
@@ -172,7 +200,10 @@ A running record of decisions I made each phase. Entries stay as-written when la
 - Partition rollover is manual - partitions are created at migration time. Running out of partitions will cause inserts to fail.
 - Authentication is a hardcoded `MONITOR_USER_ID` env var - no real auth.
 
-### Phase 2 - Three Real Checkers
+</details>
+
+<details>
+<summary><strong>Phase 2 - Three Real Checkers</strong></summary>
 
 **Focus:** Replaced the in-process checker with three independent checker processes running in Frankfurt, Singapore, and New York. Main VPS on Hetzner, checker droplets on DigitalOcean. Three regions, genuinely independent network paths.
 
@@ -200,7 +231,10 @@ A running record of decisions I made each phase. Entries stay as-written when la
 - Partition rollover for `check_results` and `checker_heartbeats` is a manual script.
 - API traffic is HTTP, not HTTPS. The API port is firewalled on the main VPS to the three checker droplet IPs only (ufw + `ufw-docker` to handle Docker's iptables bypass), so the API key crosses three known point-to-point links rather than the open internet - but it is not encrypted in transit. Adding Caddy + Let's Encrypt is blocked on owning a domain; tracked as the next thing to fix when that lands.
 
-### Phase 3 - Windowed Consensus
+</details>
+
+<details>
+<summary><strong>Phase 3 - Windowed Consensus</strong></summary>
 
 **Focus:** A check verdict is decided by majority agreement across checkers within a recent time window, not by whichever checker wrote last. One checker having a bad network path no longer produces alerts on its own.
 
@@ -209,14 +243,14 @@ A running record of decisions I made each phase. Entries stay as-written when la
 - `evaluateConsensus` runs on every result write. Takes a per-monitor `pg_try_advisory_xact_lock(hashtext(monitor_id))`, reads the most-recent result per checker within a 90-second window (`DISTINCT ON (checker_id)`), intersects with checkers that heartbeated in the last 2 minutes, and computes a verdict: `up` / `down` / `degraded` / `insufficient_data`
 - Majority rule: with 3 checkers, 2-of-3 decides. With 2, only a unanimous pair is callable - a split is `degraded`. With 1, the lone vote stands at low confidence
 - Verdict persisted to a denormalised `monitors.last_consensus`; surfaced on `GET /v1/monitors/:id` via a Fastify response schema that whitelists public fields
-- Alerts moved from per-checker to per-consensus-edge. One DOWN ntfy per real `upΓåÆdown` cross-checker transition, one RECOVERED per `downΓåÆup`. Phase 2's `maybeAlert` and `getLastTwoResultsForChecker` deleted
+- Alerts moved from per-checker to per-consensus-edge. One DOWN ntfy per real `up→down` cross-checker transition, one RECOVERED per `down→up`. Phase 2's `maybeAlert` and `getLastTwoResultsForChecker` deleted
 - Pure `computeConsensus` (unit-tested with literal `WindowResult[]`) split from `evaluateConsensus` (the lock + queries + persist + log shell, integration-tested against a real Postgres via testcontainers)
 - Lock contention skips rather than queues: if a second evaluation for the same monitor can't acquire the lock it returns `null` and the next result write re-evaluates
 
 **Key decisions and tricky bugs:**
 
 - Window is 90 seconds, wider than the 60s default check interval. A 60s window would have dropped any checker even slightly late; 90s gives a slow result time to land and tolerates one missed cycle.
-- Added a second column `last_alertable_consensus` that only records `up`/`down`. The alert-edge check reads this column, not `last_consensus`. Without it, a transient `up ΓåÆ degraded ΓåÆ down` would have silently consumed the real transition - `degraded` would have overwritten `up` in `last_consensus` and the alert function would have treated `degraded ΓåÆ down` as a first-evaluation and stayed quiet.
+- Added a second column `last_alertable_consensus` that only records `up`/`down`. The alert-edge check reads this column, not `last_consensus`. Without it, a transient `up → degraded → down` would have silently consumed the real transition - `degraded` would have overwritten `up` in `last_consensus` and the alert function would have treated `degraded → down` as a first-evaluation and stayed quiet.
 - `medianDurationMs` is `number | null`, never `0`. A `0` reads as "responded in 0ms" to anything that later consumes it as a real measurement.
 - Heartbeat intersection, not just the window. A checker that wrote a result then died mid-window has its vote dropped - the data is stale and a dead checker shouldn't keep voting.
 - `pg_try_advisory_xact_lock` is the right primitive: `_try_` so contention skips rather than queues, `_xact_` so the lock auto-releases on COMMIT/ROLLBACK and can't leak. Both consensus queries and the UPDATE take `PoolClient` as their first parameter so the type system enforces "run on the same connection that holds the lock" - using the module-level `query` helper would silently grab a different pooled connection.
@@ -230,7 +264,10 @@ A running record of decisions I made each phase. Entries stay as-written when la
 - The 90-second window has an edge. A checker slow enough to land its result *outside* the window gets evaluated with one fewer vote - a 3-checker monitor momentarily decided 2-of-2.
 - No consensus history. Only the latest verdict is stored, in two denormalised columns. `check_results` remains the source of truth and historical verdicts have to be recomputed.
 
-### Phase 4 - State Machine with Flap Suppression
+</details>
+
+<details>
+<summary><strong>Phase 4 - State Machine with Flap Suppression</strong></summary>
 
 **Focus:** Alerts fire on real state transitions, not on every consensus edge. A four-state machine - UP / DEGRADED / DOWN / RECOVERING - sits between the consensus verdict and the alert. A failure or recovery has to persist for a configurable time before the machine declares anything, so a service that blips down for one cycle and back never pages anyone.
 
@@ -260,7 +297,10 @@ A running record of decisions I made each phase. Entries stay as-written when la
 - `status_events` partitions roll over manually - the same limitation as `check_results`, now on a second partitioned table.
 - No retroactive transitions. If the API is down while a target is down, on restart the machine evaluates against the current result; it does not reconstruct what happened during the gap. `check_results` keeps the data.
 
-### Phase 5 - EWMA Latency Anomaly Detection
+</details>
+
+<details>
+<summary><strong>Phase 5 - EWMA Latency Anomaly Detection</strong></summary>
 
 **Focus:** Detect a service responding slower than its own baseline while still UP - a signal the up/down FSM cannot see. One online statistic (EWMA mean + EWMA variance), one z-score threshold, an `anomaly_events` audit log, and SLOW alerts on the existing pg-boss queue.
 
@@ -276,25 +316,27 @@ A running record of decisions I made each phase. Entries stay as-written when la
 - Z-score and variance are computed against the **previous** baseline before folding the new reading in. Updating the mean first lets a spike partially mask itself - unit test #7 exists to pin the ordering
 - `anomaly_events` stores the **pre-reading** baseline (`baseline_ewma`, `baseline_std_dev`) - the expectation that was violated, not the post-update values
 - Flat warm-up (variance 0) guards `prevStdDev > 0` before dividing - otherwise `z = diff/0`. Unit test #9
-- The live DoD ran against a naturally-warmed baseline (342 samples, ~168ms, ╧âΓëê7.9) - no seeding. The `params` argument on `updateEwma` defaults to the production constants but lets the unit tests reach steady state without folding 30 readings, so the test suite never depends on a seeded database
+- The live DoD ran against a naturally-warmed baseline (342 samples, ~168ms, σ≈7.9) - no seeding. The `params` argument on `updateEwma` defaults to the production constants but lets the unit tests reach steady state without folding 30 readings, so the test suite never depends on a seeded database
 - `duration_ms` on an anomaly row is the consensus **median** across three checkers, not the fake-target's `/control/slow/` floor. eu adds ~400ms to a low RTT; ap/us add ~400ms on top of ~300ms RTT - the median lands between them
-- The live run surfaced two things the unit tests only imply. With ╧â as small as ~3.9 a 14ms jitter crossed z=3 and fired before injection - a fixed 3╧â multiplier over-fires on a low-variance baseline. And a sustained slowdown self-quiets: the first slow reading hit z=21.1, but as each slow reading folded in, the baseline climbed 163ΓåÆ187ΓåÆ223ms and z fell to ~3.2 within three cycles. The detector is loud on the onset of a step and progressively deaf once the baseline chases it
-
+- The live run surfaced two things the unit tests only imply. With σ as small as ~3.9 a 14ms jitter crossed z=3 and fired before injection - a fixed 3σ multiplier over-fires on a low-variance baseline. And a sustained slowdown self-quiets: the first slow reading hit z=21.1, but as each slow reading folded in, the baseline climbed 163→187→223ms and z fell to ~3.2 within three cycles. The detector is loud on the onset of a step and progressively deaf once the baseline chases it
 
 **Limitations of this phase:**
 
 - EWMA catches **step changes** in latency, not **gradual drift** - a slow leak over hours pulls the baseline with it and never trips the z-score (unit test 6: +2ms x 50 never flags)
-- A **sustained** step also self-quiets: the onset fires loudly, but the baseline chases the new level within a few cycles and the z-score collapses (the live DoD watched z fall 21ΓåÆ3.2 across three slow readings). The alert is reliable on the *transition*, not on the steady slow state that follows
-- The fixed **3╧â threshold over-fires on a low-variance baseline** - when ╧â is a few milliseconds, ordinary jitter clears it (a 14ms move fired z=3 in the live run). The multiplier doesn't adapt to how tight the baseline is
-- One baseline off the **consensus median**, not per-checker EWMAs - cannot tell "the service is slow" from "one checker's path is slow"
+- A **sustained** step also self-quiets: the onset fires loudly, but the baseline chases the new level within a few cycles and the z-score collapses (the live DoD watched z fall 21→3.2 across three slow readings). The alert is reliable on the *transition*, not on the steady slow state that follows
+- The fixed **3σ threshold over-fires on a low-variance baseline** - when σ is a few milliseconds, ordinary jitter clears it (a 14ms move fired z=3 in the live run). The multiplier doesn't adapt to how tight the baseline is
+- One baseline off the **consensus median**, not per-checker EWMAs - cannot tell "the service is slow" from "one checker's path is slow" (resolved in Phase 7)
 - No seasonality - a service slower at peak will, after a few peak cycles, pull its baseline toward peak and under-detect off-peak
 - EWMA-style online variance is simpler and more biased than Welford's algorithm - appropriate for a moving baseline, not a stationary one
-- ╬▒=0.15 chosen without production tuning data - middle ground between responsiveness and false positives
+- α=0.15 chosen without production tuning data - middle ground between responsiveness and false positives
 - Anomaly never changes `monitors.status` - two independent layers
 - Alert delivery is best-effort post-commit; `anomaly_events` is authoritative for what fired
 - `anomaly_events` partitions roll over manually - same as `status_events`
 
-### Phase 6 - SLA, SLO, and Error Budget
+</details>
+
+<details>
+<summary><strong>Phase 6 - SLA, SLO, and Error Budget</strong></summary>
 
 **Focus:** Turn the `status_events` transition log into uptime numbers. A read-only `GET /v1/monitors/:id/sla` endpoint that counts FSM `down` time, excludes scheduled maintenance and monitoring coverage gaps, and optionally reports an SLO error budget. No new measurement - just arithmetic over data Phases 3-5 already produce.
 
@@ -320,9 +362,12 @@ A running record of decisions I made each phase. Entries stay as-written when la
 - A window that is entirely maintenance or coverage gap has zero monitored minutes, so `uptimePercent` reports 0, not "no data" - the caller must read `monitoredMinutes` to tell the two apart.
 - Coverage gaps are system-wide, not per-monitor, and there is no per-checker SLA - downtime can't be attributed to a region.
 - Reconstructing status before the first event in range assumes `up`; a monitor still in `pending` at window start is the documented edge.
-- `status_events` and `checker_heartbeats` partitions roll over manually - an SLA query over a range with no partition fails, same as the other partitioned tables.
+- `status_events` and `checker_heartbeats` partitions roll over manually - an SLA query over a range with no partition fails, same as the other partitioned tables (resolved in Phase 7).
 
-### Phase 7 - Per-Checker Anomaly and Demo Hardening
+</details>
+
+<details>
+<summary><strong>Phase 7 - Per-Checker Anomaly and Demo Hardening</strong></summary>
 
 **Focus:** Separate service-wide latency slowdown from one bad checker path, make alerts durable, automate partition rollover, and let strangers drive a live demo without handing out real credentials.
 
@@ -345,6 +390,50 @@ A running record of decisions I made each phase. Entries stay as-written when la
 **Limitations of this phase:**
 
 - SSRF is checked at monitor creation, not on every check - DNS rebinding at check time is not closed
-- The demo cookie is not `Secure` - the deployment is still HTTP
+- The demo cookie is not `Secure` - the deployment is still HTTP (resolved in Phase 8 with TLS)
 - `monitors.ewma_*` is kept for display only; alerts come from per-checker baselines
 - Demo IP throttling is best-effort; the global cap is the real bound
+
+</details>
+
+<details>
+<summary><strong>Phase 8 - Benchmarks, Live Demo, and README</strong></summary>
+
+**Focus:** A public demo frontend, OpenAPI, and documentation.
+
+**What's in place:**
+
+- Offline EWMA alpha sweep (`tools/bench/ewma-alpha-sweep.ts`) - replays recorded latency through production `updateEwma` with different α values; CSV in `docs/`
+- Consolidated benchmark numbers for consensus suppression (Phase 3), flap reduction (Phase 4), and regional vs service-wide anomaly (Phase 7)
+- OpenAPI 3 spec + Swagger UI at `/docs` (`withCredentials` for the demo cookie)
+- Public read-only showcase routes (`GET /v1/public/monitors/...`) - allowlisted monitor ids only; feeds the demo without loosening user-scoped queries
+- Caddy + Let's Encrypt on `argus.tanhab.com`; demo dashboard SPA at `/demo` (showcase tab, try-it-yourself sandbox, benchmarks tab)
+- Checkers reach the API over HTTPS on `/internal/*` with a Caddy IP allowlist - Hetzner Cloud Firewall blocks inbound `:3000`
+
+**Key decisions and tricky bugs:**
+
+- Showcase-first demo - lands on a monitor with real multi-region history, not an empty sandbox
+- A separate public allowlisted read path keeps the user-scoped queries locked - the public endpoint can only ever serve monitors explicitly published by config
+- Public create path stays capped and rate-limited; strangers drive real checker droplets
+- Checker traffic moved to HTTPS because the cloud firewall never opened `:3000` to the internet - `/internal/*` is IP-gated at Caddy instead
+
+**Limitations of this phase:**
+
+- Demo auth is still not production session handling - expiring cookie, IP-throttled, demo scope only
+- Single VPS, no HA - deliberate cost tradeoff; durability is Hetzner auto-backup (~24h RPO), not multi-node failover
+- IP demo throttle is best-effort; the global active-token cap is the real bound
+
+</details>
+
+---
+
+## Known Limitations
+
+Carried forward and owned, not hidden:
+
+- **No HA.** Single VPS by deliberate cost tradeoff; durability is Hetzner automated backup (~24h RPO, minutes RTO), not multi-node failover.
+- **No real authn/authz.** App access is a single hardcoded `MONITOR_USER_ID`; the demo uses expiring, IP-throttled tokens, not production session handling.
+- **EWMA detects step changes only** - no gradual-drift detection, no seasonality, and a sustained slowdown self-quiets as the baseline chases it.
+- **Coverage-gap SLA exclusion is a perverse incentive** - mitigated by reporting it separately and flagging low confidence, not solved.
+- **Three checkers is the minimum for 2-of-3** - one provider outage removes a third of capacity.
+- **Deploy is GitHub Actions over SSH, not Terraform** - works, not fully declarative.

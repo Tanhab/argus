@@ -9,10 +9,10 @@ const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 
 let container: StartedPostgreSqlContainer;
 
-function nextCheckResultsPartitionName(): string {
+function checkResultsPartitionName(monthOffset: 0 | 1): string {
   const d = new Date();
   d.setUTCDate(1);
-  d.setUTCMonth(d.getUTCMonth() + 1);
+  d.setUTCMonth(d.getUTCMonth() + monthOffset);
   const year = d.getUTCFullYear();
   const month = String(d.getUTCMonth() + 1).padStart(2, '0');
   return `check_results_${year}_${month}`;
@@ -42,8 +42,21 @@ beforeEach(async () => {
 });
 
 describe('maintenance jobs', () => {
+  test('rolloverPartitions creates the current-month check_results partition', async () => {
+    const partName = checkResultsPartitionName(0);
+    await query(`DROP TABLE IF EXISTS ${partName}`);
+
+    await rolloverPartitions();
+
+    const rows = await query<{ relname: string }>(
+      `SELECT relname FROM pg_class WHERE relname = $1`,
+      [partName],
+    );
+    expect(rows).toHaveLength(1);
+  });
+
   test('rolloverPartitions creates the next-month check_results partition', async () => {
-    const partName = nextCheckResultsPartitionName();
+    const partName = checkResultsPartitionName(1);
     await query(`DROP TABLE IF EXISTS ${partName}`);
 
     await rolloverPartitions();
