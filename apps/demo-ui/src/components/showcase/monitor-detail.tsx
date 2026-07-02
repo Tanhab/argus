@@ -1,6 +1,6 @@
 import type { MonitorDataScope } from '../../api/monitor-api';
 import type { MonitorView, PublicMonitor } from '../../api/types';
-import { monitorLabel, shortUrl } from '../../lib/monitor-label';
+import { MONITOR_DETAIL_EYEBROW, shortUrl } from '../../lib/monitor-label';
 import { StatusBadge } from '../status-badge';
 import { ActivityLog } from './activity-log';
 import { ConsensusPanel } from './consensus-panel';
@@ -18,7 +18,7 @@ export function MonitorDetail({ monitor, scope = 'public' }: MonitorDetailProps)
       <header className="rounded-lg border border-slate-800 bg-slate-900/40 px-4 py-3.5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <p className="text-xs text-slate-500">{monitorLabel(monitor.url)}</p>
+            <p className="text-xs text-slate-500">{MONITOR_DETAIL_EYEBROW}</p>
             <h2 className="truncate text-lg font-semibold text-slate-50">
               {shortUrl(monitor.url)}
             </h2>
