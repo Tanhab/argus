@@ -9,6 +9,7 @@ import {
 import type { Monitor, MonitorView } from '../../api/types';
 import { activityEmptyHint } from '../../lib/empty-state-copy';
 import { shortUrl } from '../../lib/monitor-label';
+import { POLL_MS } from '../../lib/poll-interval';
 import { MonitorDetail } from '../showcase/monitor-detail';
 
 const DEMO_MONITOR_QUOTA = 3;
@@ -106,6 +107,33 @@ export function TryTab() {
       cancelled = true;
     };
   }, [refreshMonitors]);
+
+  useEffect(() => {
+    if (!authed) return;
+
+    let cancelled = false;
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          const rows = await listMyMonitors();
+          if (cancelled) return;
+          const active = rows.filter((m) => m.isActive);
+          setMonitors(active);
+          setSelectedId((prev) => {
+            if (prev && active.some((m) => m.id === prev)) return prev;
+            return active[0]?.id ?? null;
+          });
+        } catch {
+          // keep last good snapshot on transient poll failures
+        }
+      })();
+    }, POLL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [authed]);
 
   async function handleStartSession() {
     setStarting(true);
