@@ -8,7 +8,6 @@ import {
   subtractIntervals,
   sumDurationMinutes,
 } from '@argus/sla';
-import { ValidationError } from '../errors.js';
 import type { SlaIncident, SlaResponse } from './types.js';
 
 const KNOWN_CHECKERS = ['checker-eu', 'checker-ap', 'checker-us'];
@@ -31,8 +30,29 @@ export async function computeSla(
       : monitor.deactivatedAt
     : to;
 
+  // A monitor that was not active for any part of the requested range is a real
+  // answer, not a bad request: there is simply nothing to measure. Report a
+  // zero-length window so callers can say "not monitored" instead of erroring.
   if (effectiveFrom >= effectiveTo) {
-    throw new ValidationError('effective SLA window is empty');
+    return {
+      monitorId,
+      window: {
+        from: from.toISOString(),
+        to: to.toISOString(),
+        effectiveFrom: effectiveFrom.toISOString(),
+        effectiveTo: effectiveFrom.toISOString(),
+      },
+      sli: {
+        totalMinutes: 0,
+        maintenanceMinutes: 0,
+        coverageGapMinutes: 0,
+        monitoredMinutes: 0,
+        downtimeMinutes: 0,
+        uptimePercent: null,
+        lowConfidence: false,
+      },
+      incidents: [],
+    };
   }
 
   const totalMinutes = (effectiveTo.getTime() - effectiveFrom.getTime()) / 60_000;
@@ -61,7 +81,7 @@ export async function computeSla(
   const maintenanceMinutes = sumDurationMinutes(maintenance);
   const coverageGapMinutes = sumDurationMinutes(gaps);
   const uptimePercent =
-    monitoredMinutes > 0 ? ((monitoredMinutes - downtimeMinutes) / monitoredMinutes) * 100 : 0;
+    monitoredMinutes > 0 ? ((monitoredMinutes - downtimeMinutes) / monitoredMinutes) * 100 : null;
   const lowConfidence = coverageGapMinutes / totalMinutes > LOW_CONFIDENCE_THRESHOLD;
 
   const incidents: SlaIncident[] = countedDown.map((interval) => ({
@@ -90,7 +110,7 @@ export async function computeSla(
     incidents,
   };
 
-  if (sloTarget !== undefined) {
+  if (sloTarget !== undefined && uptimePercent !== null) {
     const budgetTotal = monitoredMinutes * (1 - sloTarget / 100);
     const remaining = Math.max(0, budgetTotal - downtimeMinutes);
     response.slo = {

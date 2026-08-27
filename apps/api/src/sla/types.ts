@@ -10,7 +10,8 @@ export interface SlaSli {
   coverageGapMinutes: number;
   monitoredMinutes: number;
   downtimeMinutes: number;
-  uptimePercent: number;
+  /** null when no monitored time exists in the window, so no percentage is meaningful. */
+  uptimePercent: number | null;
   lowConfidence: boolean;
 }
 
