@@ -34,9 +34,13 @@ export async function demoRoutes(app: FastifyInstance) {
     },
     async (req, reply) => {
       const owner = demoOwnerFromIp(req.ip);
+
+      // The raw key exists only in the caller's cookie, so a client that lost it
+      // could never recover a session while its old key was still active. Replace
+      // the old key rather than refusing; one client still holds at most one.
       const existing = await apiKeys.findActiveDemoKeyForOwner(owner);
       if (existing) {
-        throw new ConflictError('demo token already active for this client');
+        await apiKeys.revokeApiKey(existing.id);
       }
 
       const activeCount = await apiKeys.countActiveDemoKeys();

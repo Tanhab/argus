@@ -13,7 +13,6 @@ beforeAll(async () => {
   container = await new PostgreSqlContainer('postgres:17-alpine').start();
   const connUri = container.getConnectionUri();
   process.env.DATABASE_URL = connUri;
-  process.env.MONITOR_USER_ID = 'test-user';
   process.env.NTFY_TOPIC_URL = 'https://ntfy.sh/test';
   resetPool(connUri);
   const { runner } = await import('node-pg-migrate');

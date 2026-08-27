@@ -1,6 +1,6 @@
 import { maintenanceWindows, monitors } from '@argus/db';
 import type { FastifyInstance } from 'fastify';
-import { config } from '../config.js';
+import { attachMonitorUser, requireMonitorUser } from '../auth/resolve-user.js';
 import { NotFoundError, ValidationError } from '../errors.js';
 import { monitorIdParams } from '../openapi/common-schemas.js';
 
@@ -25,12 +25,14 @@ const maintenanceWindowIdParams = {
   },
 } as const;
 
-async function requireMonitor(monitorId: string): Promise<void> {
-  const monitor = await monitors.getMonitor(monitorId, config.monitorUserId);
+async function requireMonitor(monitorId: string, userId: string): Promise<void> {
+  const monitor = await monitors.getMonitor(monitorId, userId);
   if (!monitor) throw new NotFoundError(`monitor ${monitorId} not found`);
 }
 
 export async function maintenanceRoutes(app: FastifyInstance) {
+  app.addHook('preHandler', attachMonitorUser);
+
   app.post(
     '/monitors/:id/maintenance',
     {
@@ -56,7 +58,7 @@ export async function maintenanceRoutes(app: FastifyInstance) {
       const { id: monitorId } = req.params as { id: string };
       const body = req.body as { startsAt: string; endsAt: string; label?: string | null };
 
-      await requireMonitor(monitorId);
+      await requireMonitor(monitorId, requireMonitorUser(req).userId);
 
       const startsAt = new Date(body.startsAt);
       const endsAt = new Date(body.endsAt);
@@ -88,7 +90,7 @@ export async function maintenanceRoutes(app: FastifyInstance) {
     },
     async (req) => {
       const { id: monitorId } = req.params as { id: string };
-      await requireMonitor(monitorId);
+      await requireMonitor(monitorId, requireMonitorUser(req).userId);
       return maintenanceWindows.listMaintenanceWindows(monitorId);
     },
   );
@@ -105,7 +107,7 @@ export async function maintenanceRoutes(app: FastifyInstance) {
     },
     async (req, reply) => {
       const { id: monitorId, windowId } = req.params as { id: string; windowId: string };
-      await requireMonitor(monitorId);
+      await requireMonitor(monitorId, requireMonitorUser(req).userId);
 
       const deleted = await maintenanceWindows.deleteMaintenanceWindow(windowId, monitorId);
       if (!deleted) throw new NotFoundError(`maintenance window ${windowId} not found`);

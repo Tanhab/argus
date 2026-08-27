@@ -16,7 +16,6 @@ function parseShowcaseMonitorIds(raw: string): string[] {
 export const config = {
   port: Number(process.env.PORT ?? 3000),
   nodeEnv: process.env.NODE_ENV ?? 'development',
-  monitorUserId: requireEnv('MONITOR_USER_ID'),
   ntfyTopicUrl: requireEnv('NTFY_TOPIC_URL'),
   databaseUrl: requireEnv('DATABASE_URL'),
   demoTokenTtlHours: Number(process.env.DEMO_TOKEN_TTL_HOURS ?? 4),

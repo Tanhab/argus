@@ -17,7 +17,6 @@ beforeAll(async () => {
   container = await new PostgreSqlContainer('postgres:17-alpine').start();
   const connUri = container.getConnectionUri();
   process.env.DATABASE_URL = connUri;
-  process.env.MONITOR_USER_ID = 'owner-user';
   process.env.NTFY_TOPIC_URL = 'https://ntfy.sh/test';
   process.env.PUBLIC_SHOWCASE_MONITOR_IDS = `${SHOWCASE_A},${SHOWCASE_B}`;
   resetPool(connUri);

@@ -14,7 +14,6 @@ beforeAll(async () => {
   container = await new PostgreSqlContainer('postgres:17-alpine').start();
   const connUri = container.getConnectionUri();
   process.env.DATABASE_URL = connUri;
-  process.env.MONITOR_USER_ID = 'test-user';
   process.env.NTFY_TOPIC_URL = 'https://ntfy.sh/test';
   resetPool(connUri);
   const { runner } = await import('node-pg-migrate');
@@ -141,7 +140,7 @@ describe('demo routes', () => {
     expect(res.statusCode).toBe(409);
   });
 
-  test('second mint from same client is rejected', async () => {
+  test('second mint from same client replaces the first key', async () => {
     const clientIp = '198.51.100.6';
     const first = await app.inject({
       method: 'POST',
@@ -149,13 +148,33 @@ describe('demo routes', () => {
       remoteAddress: clientIp,
     });
     expect(first.statusCode).toBe(201);
+    const firstKey = (first.json() as { key: string }).key;
 
     const second = await app.inject({
       method: 'POST',
       url: '/v1/demo/token',
       remoteAddress: clientIp,
     });
-    expect(second.statusCode).toBe(409);
+    expect(second.statusCode).toBe(201);
+    const secondKey = (second.json() as { key: string }).key;
+    expect(secondKey).not.toBe(firstKey);
+
+    // The replaced key must stop working, so a stranded client cannot keep two.
+    const withOldKey = await app.inject({
+      method: 'GET',
+      url: '/v1/monitors',
+      remoteAddress: clientIp,
+      cookies: { [config.demoCookieName]: firstKey },
+    });
+    expect(withOldKey.statusCode).toBe(401);
+
+    const withNewKey = await app.inject({
+      method: 'GET',
+      url: '/v1/monitors',
+      remoteAddress: clientIp,
+      cookies: { [config.demoCookieName]: secondKey },
+    });
+    expect(withNewKey.statusCode).toBe(200);
   });
 
   test('demo user cannot create monitor for private url', async () => {

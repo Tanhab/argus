@@ -3,11 +3,13 @@ import { query, resetPool } from '@argus/db';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { buildApp } from '../app.js';
+import { seedApiKey } from '../testing/seed-api-key.js';
 
 const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 
 let container: StartedPostgreSqlContainer;
 let app: Awaited<ReturnType<typeof buildApp>>;
+let ownerKey: string;
 
 const USER = 'test-user';
 
@@ -15,7 +17,6 @@ beforeAll(async () => {
   container = await new PostgreSqlContainer('postgres:17-alpine').start();
   const connUri = container.getConnectionUri();
   process.env.DATABASE_URL = connUri;
-  process.env.MONITOR_USER_ID = USER;
   process.env.NTFY_TOPIC_URL = 'https://ntfy.sh/test';
   resetPool(connUri);
   const { runner } = await import('node-pg-migrate');
@@ -27,6 +28,7 @@ beforeAll(async () => {
     verbose: false,
   });
   app = await buildApp();
+  ownerKey = await seedApiKey('test-user');
 });
 
 afterAll(async () => {
@@ -89,6 +91,7 @@ async function seedMaintenance(monitorId: string, startsAt: string, endsAt: stri
 
 function getSla(monitorId: string, params: Record<string, string | number>) {
   return app.inject({
+    headers: { 'x-api-key': ownerKey },
     method: 'GET',
     url: `/v1/monitors/${monitorId}/sla`,
     query: Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)])),

@@ -6,7 +6,6 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     env: {
       DATABASE_URL: 'postgres://placeholder',
-      MONITOR_USER_ID: 'test-user',
       NTFY_TOPIC_URL: 'https://ntfy.sh/test',
       CHECKER_ID: 'local',
       PUBLIC_SHOWCASE_MONITOR_IDS:

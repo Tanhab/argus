@@ -3,17 +3,18 @@ import { query, resetPool } from '@argus/db';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { buildApp } from '../app.js';
+import { seedApiKey } from '../testing/seed-api-key.js';
 
 const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 
 let container: StartedPostgreSqlContainer;
 let app: Awaited<ReturnType<typeof buildApp>>;
+let ownerKey: string;
 
 beforeAll(async () => {
   container = await new PostgreSqlContainer('postgres:17-alpine').start();
   const connUri = container.getConnectionUri();
   process.env.DATABASE_URL = connUri;
-  process.env.MONITOR_USER_ID = 'test-user';
   process.env.NTFY_TOPIC_URL = 'https://ntfy.sh/test';
   resetPool(connUri);
   const { runner } = await import('node-pg-migrate');
@@ -25,6 +26,7 @@ beforeAll(async () => {
     verbose: false,
   });
   app = await buildApp();
+  ownerKey = await seedApiKey('test-user');
 });
 
 afterAll(async () => {
@@ -39,6 +41,7 @@ beforeEach(async () => {
 describe('maintenance routes', () => {
   async function createMonitor() {
     const res = await app.inject({
+      headers: { 'x-api-key': ownerKey },
       method: 'POST',
       url: '/v1/monitors',
       payload: { url: 'https://example.com' },
@@ -49,6 +52,7 @@ describe('maintenance routes', () => {
   test('POST /v1/monitors/:id/maintenance returns 201', async () => {
     const monitor = await createMonitor();
     const res = await app.inject({
+      headers: { 'x-api-key': ownerKey },
       method: 'POST',
       url: `/v1/monitors/${monitor.id}/maintenance`,
       payload: {
@@ -67,6 +71,7 @@ describe('maintenance routes', () => {
   test('POST returns 400 when endsAt is not after startsAt', async () => {
     const monitor = await createMonitor();
     const res = await app.inject({
+      headers: { 'x-api-key': ownerKey },
       method: 'POST',
       url: `/v1/monitors/${monitor.id}/maintenance`,
       payload: {
@@ -80,6 +85,7 @@ describe('maintenance routes', () => {
 
   test('POST returns 404 for unknown monitor', async () => {
     const res = await app.inject({
+      headers: { 'x-api-key': ownerKey },
       method: 'POST',
       url: '/v1/monitors/missing/maintenance',
       payload: {
@@ -94,6 +100,7 @@ describe('maintenance routes', () => {
   test('GET /v1/monitors/:id/maintenance lists windows', async () => {
     const monitor = await createMonitor();
     await app.inject({
+      headers: { 'x-api-key': ownerKey },
       method: 'POST',
       url: `/v1/monitors/${monitor.id}/maintenance`,
       payload: {
@@ -103,6 +110,7 @@ describe('maintenance routes', () => {
     });
 
     const res = await app.inject({
+      headers: { 'x-api-key': ownerKey },
       method: 'GET',
       url: `/v1/monitors/${monitor.id}/maintenance`,
     });
@@ -114,6 +122,7 @@ describe('maintenance routes', () => {
   test('DELETE /v1/monitors/:id/maintenance/:windowId returns 204', async () => {
     const monitor = await createMonitor();
     const created = await app.inject({
+      headers: { 'x-api-key': ownerKey },
       method: 'POST',
       url: `/v1/monitors/${monitor.id}/maintenance`,
       payload: {
@@ -124,6 +133,7 @@ describe('maintenance routes', () => {
     const windowId = (created.json() as { id: string }).id;
 
     const res = await app.inject({
+      headers: { 'x-api-key': ownerKey },
       method: 'DELETE',
       url: `/v1/monitors/${monitor.id}/maintenance/${windowId}`,
     });
@@ -131,6 +141,7 @@ describe('maintenance routes', () => {
     expect(res.statusCode).toBe(204);
 
     const list = await app.inject({
+      headers: { 'x-api-key': ownerKey },
       method: 'GET',
       url: `/v1/monitors/${monitor.id}/maintenance`,
     });
@@ -140,6 +151,7 @@ describe('maintenance routes', () => {
   test('DELETE returns 404 for unknown window', async () => {
     const monitor = await createMonitor();
     const res = await app.inject({
+      headers: { 'x-api-key': ownerKey },
       method: 'DELETE',
       url: `/v1/monitors/${monitor.id}/maintenance/missing-window`,
     });

@@ -28,6 +28,12 @@ export class AuthError extends ArgusError {
   }
 }
 
+export class ForbiddenError extends ArgusError {
+  constructor(message: string, cause?: unknown) {
+    super(message, 'forbidden', 403, cause);
+  }
+}
+
 export class ConflictError extends ArgusError {
   constructor(message: string, cause?: unknown) {
     super(message, 'conflict', 409, cause);
