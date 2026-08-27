@@ -2,6 +2,9 @@ argus.tanhab.com {
 	@internal path /internal/*
 	@checker_ips remote_ip 138.68.109.43 168.144.38.67 104.248.63.58
 
+	# The API serves no route at /; the dashboard lives under /demo/.
+	redir / /demo/
+
 	handle @internal {
 		handle @checker_ips {
 			reverse_proxy api:3000

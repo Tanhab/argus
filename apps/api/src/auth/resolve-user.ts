@@ -4,6 +4,9 @@ import type { preHandlerAsyncHookHandler } from 'fastify';
 import { config } from '../config.js';
 import { AuthError } from '../errors.js';
 
+/** Scope carried by the owner's long-lived key, as opposed to an expiring demo token. */
+export const OWNER_SCOPE = 'monitor:write';
+
 export interface MonitorUser {
   userId: string;
   isDemo: boolean;
@@ -26,16 +29,23 @@ export async function resolveMonitorUser(req: {
 }): Promise<MonitorUser> {
   const rawKey = readDemoRawKey(req);
   if (!rawKey) {
-    return { userId: config.monitorUserId, isDemo: false };
+    throw new AuthError('missing api key');
   }
 
   const hash = createHash('sha256').update(rawKey).digest('hex');
   const key = await apiKeys.findByHash(hash);
-  if (!key?.scopes.includes('demo:write')) {
-    throw new AuthError('invalid or expired demo token');
+  if (!key) {
+    throw new AuthError('invalid or expired token');
   }
 
-  return { userId: key.owner, isDemo: true };
+  if (key.scopes.includes('demo:write')) {
+    return { userId: key.owner, isDemo: true };
+  }
+  if (key.scopes.includes(OWNER_SCOPE)) {
+    return { userId: key.owner, isDemo: false };
+  }
+
+  throw new AuthError('token lacks the scope for this operation');
 }
 
 export const attachMonitorUser: preHandlerAsyncHookHandler = async (req) => {

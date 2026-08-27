@@ -3,16 +3,20 @@ import { query, resetPool } from '@argus/db';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import { buildApp } from '../app.js';
+import { seedApiKey } from '../testing/seed-api-key.js';
 
 const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 let container: StartedPostgreSqlContainer;
 let app: Awaited<ReturnType<typeof buildApp>>;
+let ownerKey: string;
+
+// Matches the first id in PUBLIC_SHOWCASE_MONITOR_IDS from vitest.config.ts.
+const SHOWCASE_ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 
 beforeAll(async () => {
   container = await new PostgreSqlContainer('postgres:17-alpine').start();
   const connUri = container.getConnectionUri();
   process.env.DATABASE_URL = connUri;
-  process.env.MONITOR_USER_ID = 'test-user';
   process.env.NTFY_TOPIC_URL = 'https://ntfy.sh/test';
   resetPool(connUri);
   const { runner } = await import('node-pg-migrate');
@@ -24,6 +28,7 @@ beforeAll(async () => {
     verbose: false,
   });
   app = await buildApp();
+  ownerKey = await seedApiKey('test-user');
 });
 
 afterAll(async () => {
@@ -38,6 +43,7 @@ beforeEach(async () => {
 describe('monitors routes', () => {
   test('POST /v1/monitors returns 201 with created monitor', async () => {
     const res = await app.inject({
+      headers: { 'x-api-key': ownerKey },
       method: 'POST',
       url: '/v1/monitors',
       payload: { url: 'https://example.com', intervalSeconds: 60 },
@@ -50,6 +56,7 @@ describe('monitors routes', () => {
 
   test('POST /v1/monitors returns 400 for invalid url', async () => {
     const res = await app.inject({
+      headers: { 'x-api-key': ownerKey },
       method: 'POST',
       url: '/v1/monitors',
       payload: { url: 'not-a-url' },
@@ -59,33 +66,48 @@ describe('monitors routes', () => {
 
   test('GET /v1/monitors returns list', async () => {
     await app.inject({
+      headers: { 'x-api-key': ownerKey },
       method: 'POST',
       url: '/v1/monitors',
       payload: { url: 'https://example.com' },
     });
-    const res = await app.inject({ method: 'GET', url: '/v1/monitors' });
+    const res = await app.inject({
+      headers: { 'x-api-key': ownerKey },
+      method: 'GET',
+      url: '/v1/monitors',
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toHaveLength(1);
   });
 
   test('GET /v1/monitors/:id returns 404 for unknown id', async () => {
-    const res = await app.inject({ method: 'GET', url: '/v1/monitors/does-not-exist' });
+    const res = await app.inject({
+      headers: { 'x-api-key': ownerKey },
+      method: 'GET',
+      url: '/v1/monitors/does-not-exist',
+    });
     expect(res.statusCode).toBe(404);
   });
 
   test('DELETE /v1/monitors/:id soft deletes and returns 204', async () => {
     const created = await app.inject({
+      headers: { 'x-api-key': ownerKey },
       method: 'POST',
       url: '/v1/monitors',
       payload: { url: 'https://example.com' },
     });
     const { id } = created.json();
-    const res = await app.inject({ method: 'DELETE', url: `/v1/monitors/${id}` });
+    const res = await app.inject({
+      headers: { 'x-api-key': ownerKey },
+      method: 'DELETE',
+      url: `/v1/monitors/${id}`,
+    });
     expect(res.statusCode).toBe(204);
   });
 
   test('POST /v1/monitors returns 400 for private url', async () => {
     const res = await app.inject({
+      headers: { 'x-api-key': ownerKey },
       method: 'POST',
       url: '/v1/monitors',
       payload: { url: 'http://127.0.0.1' },
@@ -96,6 +118,7 @@ describe('monitors routes', () => {
     let blocked: Awaited<ReturnType<typeof app.inject>> | undefined;
     for (let i = 0; i < 20; i++) {
       const res = await app.inject({
+        headers: { 'x-api-key': ownerKey },
         method: 'POST',
         url: '/v1/monitors',
         payload: { url: `https://rate-limit-${i}.example.com` },
@@ -111,5 +134,58 @@ describe('monitors routes', () => {
     expect(blocked?.statusCode).toBe(429);
     expect(blocked?.json().status).toBe(429);
     expect(blocked?.json().requestId).toBeDefined();
+  });
+
+  test('GET /v1/monitors without a key returns 401 instead of the owner list', async () => {
+    const res = await app.inject({ method: 'GET', url: '/v1/monitors' });
+    expect(res.statusCode).toBe(401);
+  });
+
+  test('an unrecognised key returns 401', async () => {
+    const res = await app.inject({
+      headers: { 'x-api-key': 'argus_test_not-a-real-key' },
+      method: 'GET',
+      url: '/v1/monitors',
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  test('DELETE /v1/monitors/:id without a key returns 401 and leaves the monitor active', async () => {
+    const id = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+    await query('INSERT INTO monitors (id, user_id, url) VALUES ($1, $2, $3)', [
+      id,
+      'test-user',
+      'https://protected.example.com',
+    ]);
+
+    const res = await app.inject({ method: 'DELETE', url: `/v1/monitors/${id}` });
+    expect(res.statusCode).toBe(401);
+
+    const rows = await query<{ deactivated_at: Date | null }>(
+      'SELECT deactivated_at FROM monitors WHERE id = $1',
+      [id],
+    );
+    expect(rows[0]?.deactivated_at).toBeNull();
+  });
+
+  test('DELETE on a showcase monitor returns 403 and leaves it active', async () => {
+    await query('INSERT INTO monitors (id, user_id, url) VALUES ($1, $2, $3)', [
+      SHOWCASE_ID,
+      'test-user',
+      'https://showcase.example.com',
+    ]);
+
+    const res = await app.inject({
+      headers: { 'x-api-key': ownerKey },
+      method: 'DELETE',
+      url: `/v1/monitors/${SHOWCASE_ID}`,
+    });
+    expect(res.statusCode).toBe(403);
+
+    const rows = await query<{ deactivated_at: Date | null }>(
+      'SELECT deactivated_at FROM monitors WHERE id = $1',
+      [SHOWCASE_ID],
+    );
+    expect(rows[0]?.deactivated_at).toBeNull();
   });
 });

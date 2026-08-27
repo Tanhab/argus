@@ -2,7 +2,7 @@ import { alertOutbox, anomalyEvents, monitors, results, statusEvents } from '@ar
 import type { FastifyInstance } from 'fastify';
 import { attachMonitorUser, requireMonitorUser } from '../auth/resolve-user.js';
 import { config } from '../config.js';
-import { ConflictError, NotFoundError } from '../errors.js';
+import { ConflictError, ForbiddenError, NotFoundError } from '../errors.js';
 import { type LatencyWindow, latencyWindowRange } from '../latency-window.js';
 import { monitorIdParams } from '../openapi/common-schemas.js';
 import { assertPublicHttpUrl } from '../security/url-guard.js';
@@ -93,6 +93,8 @@ const checkResultSchema = {
     checkedAt: { type: 'string', format: 'date-time' },
   },
 } as const;
+
+const SHOWCASE_IDS = new Set(config.publicShowcaseMonitorIds);
 
 export async function monitorsRoutes(app: FastifyInstance) {
   app.addHook('preHandler', attachMonitorUser);
@@ -327,6 +329,9 @@ export async function monitorsRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { userId } = requireMonitorUser(req);
       const { id } = req.params as { id: string };
+      if (SHOWCASE_IDS.has(id)) {
+        throw new ForbiddenError('showcase monitors cannot be deactivated through the API');
+      }
       const isDeleted = await monitors.deactivateMonitor(id, userId);
       if (!isDeleted) throw new NotFoundError(`monitor ${id} not found`);
       reply.status(204).send();
