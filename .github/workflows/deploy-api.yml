@@ -97,5 +97,11 @@ jobs:
             docker pull "$IMAGE"
             export API_IMAGE="$IMAGE"
             docker compose -f infra/docker-compose.prod.yml up -d
+
+            # Caddyfile is bind-mounted as a single file, so scp replacing it
+            # leaves the running container attached to the old inode and the
+            # new config never loads. Restarting rebinds it to the current file.
+            docker restart infra-caddy-1
+
             sleep 5
             docker compose -f infra/docker-compose.prod.yml logs --tail=20 api
