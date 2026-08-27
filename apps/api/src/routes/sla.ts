@@ -25,7 +25,7 @@ const slaResponseSchema = {
         coverageGapMinutes: { type: 'number' },
         monitoredMinutes: { type: 'number' },
         downtimeMinutes: { type: 'number' },
-        uptimePercent: { type: 'number' },
+        uptimePercent: { type: 'number', nullable: true },
         lowConfidence: { type: 'boolean' },
       },
     },

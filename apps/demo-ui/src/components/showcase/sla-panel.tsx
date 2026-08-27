@@ -19,7 +19,8 @@ interface SlaPanelProps {
   className?: string;
 }
 
-function formatPercent(value: number): string {
+function formatPercent(value: number | null): string {
+  if (value === null) return '—';
   return `${value.toFixed(value >= 99.995 ? 3 : 2)}%`;
 }
 

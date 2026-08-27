@@ -128,7 +128,7 @@ export interface SlaResponse {
     coverageGapMinutes: number;
     monitoredMinutes: number;
     downtimeMinutes: number;
-    uptimePercent: number;
+    uptimePercent: number | null;
     lowConfidence: boolean;
   };
   incidents: SlaIncident[];

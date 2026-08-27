@@ -176,7 +176,7 @@ describe('GET /v1/monitors/:id/sla', () => {
 
     expect(body.sli.coverageGapMinutes).toBeCloseTo(60);
     expect(body.sli.monitoredMinutes).toBeCloseTo(0);
-    expect(body.sli.uptimePercent).toBeCloseTo(0);
+    expect(body.sli.uptimePercent).toBeNull();
     expect(body.sli.lowConfidence).toBe(true);
   });
 
@@ -217,5 +217,24 @@ describe('GET /v1/monitors/:id/sla', () => {
 
     expect(body.slo.met).toBe(true);
     expect(body.slo.errorBudget.remainingMinutes).toBeGreaterThan(0);
+  });
+
+  test('returns an empty window rather than 400 when the monitor was never active in range', async () => {
+    await seedMonitor('mon-1', '2026-06-01T00:00:00.000Z');
+    await query('UPDATE monitors SET is_active = false, deactivated_at = $2 WHERE id = $1', [
+      'mon-1',
+      '2026-06-05T00:00:00.000Z',
+    ]);
+
+    const res = await getSla('mon-1', { from: WINDOW_FROM, to: WINDOW_TO });
+    expect(res.statusCode).toBe(200);
+
+    const body = res.json();
+    expect(body.sli.totalMinutes).toBe(0);
+    expect(body.sli.monitoredMinutes).toBe(0);
+    expect(body.sli.uptimePercent).toBeNull();
+    expect(body.sli.lowConfidence).toBe(false);
+    expect(body.incidents).toEqual([]);
+    expect(body.window.effectiveFrom).toBe(body.window.effectiveTo);
   });
 });
